@@ -1,9 +1,11 @@
 # tool-installer
 
-`tool-installer` is a declarative development-environment installation orchestrator.
-It reads `tools.toml` from the current working directory, resolves the selected module and its dependencies, validates install strategies from the referenced manifest, and processes tools strictly serially.
+`tool-installer` is a dependency-free Python 3.8+ development-environment installation orchestrator.
+It reads a fixed `tools.toml` in the current working directory, follows module dependencies,
+loads the referenced manifest, validates the selected strategies for the current OS/architecture,
+and processes tools strictly serially.
 
-## Usage
+## Quick start
 
 ```bash
 tool-installer install <module> --dry-run
@@ -17,41 +19,103 @@ tool-installer install <module>
 manifest = "./manifest.toml"
 ```
 
-See `SPEC.md` for the complete behavior contract and `examples/` for a minimal fixture.
+A module may depend on other modules and may mark individual tools as optional:
 
-## Privilege Requirements
+```toml
+[base]
+python = "Python via mise"
+rust = "Stable Rust"
 
-Some managers (e.g., `apt`) require root privileges to install packages. `tool-installer` mirrors the [dotfiles `sudo_run`](~/dotfiles/setup.sh) helper:
+[dev]
+depends = ["base"]
+example-script = { desc = "local bootstrap", allow_fail = true }
+```
 
-- If the process is already running as root, commands are executed directly.
-- If not root, the command is prefixed with `sudo`, prompting for the user's password.
+See `examples/` for a runnable dry-run fixture and `SPEC.md` for the full behavior contract.
 
-### TTY Requirement
+## Manifest and managers
 
-`sudo` requires an interactive TTY to prompt for a password. If you run `tool-installer` in a non-interactive environment (e.g., CI pipeline, cron job, nohup, SSH without `-t`), the install will fail with a clear error message.
+Each tool has a manifest strategy. Strategies can have base fields plus OS/architecture overrides.
+Supported v1 managers are:
 
-**Solutions:**
+- `apt`
+- `brew`
+- `brew-cask`
+- `cargo-binstall`
+- `cargo-install`
+- `rustup`
+- `mise`
+- `npm-global`
+- `pnpm-global`
+- `uv-tool`
+- `github-release`
+- `script`
 
-1. **Run in an interactive terminal** (recommended for local use):
-   ```bash
-   tool-installer install dev
-   # sudo will prompt for password when needed
-   ```
+Example `github-release` with installed-state probing:
 
-2. **Run as root** (use with caution):
-   ```bash
-   sudo tool-installer install dev
-   ```
+```toml
+[fd]
+[fd.linux]
+manager = "github-release"
+repo = "sharkdp/fd"
+asset = "fd-{version}-{arch}-unknown-linux-gnu.tar.gz"
+bin = "fd"
 
-3. **Use SSH with TTY allocation**:
-   ```bash
-   ssh -t user@host "tool-installer install dev"
-   ```
+[fd.linux.version_probe]
+command = ["{bin}", "--version"]
+regex = "^fd (?P<version>[0-9]+\.[0-9]+\.[0-9]+)"
+```
 
-4. **For non-interactive environments**, use `sudo` with NOPASSWD or run as root directly (configure according to your security policy).
+## Dry-run vs apply mode
 
-### Security Notes
+`--dry-run` resolves dependencies, merges and validates strategies, then prints the serial plan.
+It does **not** execute installed-state checks, package-manager metadata queries, downloads,
+version probes, scripts, or mutation commands.
 
-- `tool-installer` does **not** support NOPASSWD configuration — it respects the system's `sudo` settings.
-- If your user is configured for passwordless sudo, commands will execute without prompting.
-- The credential (sudo token) lifetime is managed by the system's `sudo` configuration, not by `tool-installer`. A long download will not cause the cached credentials to expire mid-install — the entire `sudo` command runs as a single process.
+Apply mode processes one tool at a time:
+
+1. If `force = true`, skip installed-state check and install.
+2. Otherwise, run the manager's installed-state check when the manager is check-capable.
+3. `satisfied` skips the tool.
+4. `not_satisfied` installs the tool.
+5. `check_error` fails that tool and does not fall back to install.
+
+`allow_fail = true` downgrades a check/install failure for that tool to a warning and continues.
+It does not suppress configuration, dependency, or strategy errors.
+
+## Installed-state check caveats
+
+Managers use manager metadata, not bare binary existence. In v1:
+
+- `cargo-binstall` and `script` are not check-capable and install whenever reached.
+- `uv-tool` is check-capable only for exact non-`latest` selectors.
+- `github-release` is check-capable only when `version_probe` is defined.
+- `brew` and `brew-cask` only support `latest` selectors.
+
+## Privilege requirements
+
+Some managers, such as `apt`, require root privileges to install packages. `tool-installer`
+mirrors the dotfiles `sudo_run` helper:
+
+- If already root, commands are executed directly.
+- If not root, commands are prefixed with `sudo`.
+
+### TTY requirement
+
+`sudo` requires an interactive TTY to prompt for a password. In non-interactive environments
+(CI, cron, `nohup`, SSH without `-t`), privileged installs fail with a clear error.
+
+Options:
+
+```bash
+# local interactive use
+tool-installer install dev
+
+# run the whole installer as root when appropriate
+sudo tool-installer install dev
+
+# allocate a TTY over SSH
+ssh -t user@host "tool-installer install dev"
+```
+
+`tool-installer` does not configure passwordless sudo; it respects the system sudo policy.

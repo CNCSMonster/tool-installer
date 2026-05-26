@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from typing import List, Optional
 
 from ..errors import InstallationError
@@ -70,11 +69,10 @@ class AptManager(CommandManager):
         else:
             return CheckResult.SATISFIED if _v1_eq(installed_version, requested) else CheckResult.NOT_SATISFIED
 
-    @staticmethod
-    def _get_apt_candidate(pkg: str) -> Optional[str]:
+    def _get_apt_candidate(self, pkg: str) -> Optional[str]:
         """Get the candidate version from apt-cache policy."""
         try:
-            result = subprocess.run(
+            result = self.runner.run(
                 ["apt-cache", "policy", pkg],
                 check=False,
                 capture_output=True,
@@ -291,10 +289,33 @@ class CargoInstallManager(CommandManager):
 
         requested = _selector(item)
         if requested == "latest":
-            # Can't determine latest without registry query
-            return CheckResult.CHECK_ERROR
+            latest_version = self._latest_registry_version(pkg)
+            if latest_version is None:
+                return CheckResult.CHECK_ERROR
+            return CheckResult.SATISFIED if _v1_eq(found_version, latest_version) else CheckResult.NOT_SATISFIED
 
         return CheckResult.SATISFIED if _v1_eq(found_version, requested) else CheckResult.NOT_SATISFIED
+
+    def _latest_registry_version(self, pkg: str) -> Optional[str]:
+        try:
+            result = self.runner.run(
+                ["cargo", "search", pkg, "--limit", "1"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except OSError:
+            return None
+        if result.returncode != 0:
+            return None
+        # Expected format: `ripgrep = "14.1.0" # ...`
+        prefix = pkg + " = \""
+        for line in result.stdout.splitlines():
+            if line.startswith(prefix):
+                remainder = line[len(prefix):]
+                version = remainder.split("\"", 1)[0]
+                return version if version else None
+        return None
 
     def check_command(self, item: PlanItem) -> List[str]:
         raise NotImplementedError("Use check() instead")
@@ -363,8 +384,13 @@ class MiseManager(CommandManager):
             return CheckResult.NOT_SATISFIED
 
         if requested == "latest":
-            # Can't determine "latest" for mise aliases without metadata
-            return CheckResult.CHECK_ERROR
+            latest = self._latest_version(plugin)
+            if latest is None:
+                return CheckResult.CHECK_ERROR
+            for iv in installed_versions:
+                if _v1_eq(iv, latest):
+                    return CheckResult.SATISFIED
+            return CheckResult.NOT_SATISFIED
 
         # Check if any installed version matches
         for iv in installed_versions:
@@ -372,6 +398,21 @@ class MiseManager(CommandManager):
                 return CheckResult.SATISFIED
 
         return CheckResult.NOT_SATISFIED
+
+    def _latest_version(self, plugin: str) -> Optional[str]:
+        try:
+            result = self.runner.run(
+                ["mise", "latest", plugin],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except OSError:
+            return None
+        if result.returncode != 0:
+            return None
+        latest = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+        return latest or None
 
     def check_command(self, item: PlanItem) -> List[str]:
         raise NotImplementedError("Use check() instead")
@@ -417,10 +458,31 @@ class NpmGlobalManager(CommandManager):
             return CheckResult.CHECK_ERROR
 
         if requested == "latest":
-            # Can't determine latest without registry query
-            return CheckResult.CHECK_ERROR
+            latest_version = self._latest_registry_version(pkg, item.strategy.fields.get("registry"))
+            if latest_version is None:
+                return CheckResult.CHECK_ERROR
+            return CheckResult.SATISFIED if _v1_eq(installed_version, latest_version) else CheckResult.NOT_SATISFIED
 
         return CheckResult.SATISFIED if _v1_eq(installed_version, requested) else CheckResult.NOT_SATISFIED
+
+    def _latest_registry_version(self, pkg: str, registry: Optional[str] = None) -> Optional[str]:
+        command = ["npm", "view", pkg, "version", "--json"]
+        if registry:
+            command.extend(["--registry", registry])
+        try:
+            result = self.runner.run(command, check=False, capture_output=True, text=True)
+        except OSError:
+            return None
+        if result.returncode != 0:
+            return None
+        raw = result.stdout.strip()
+        if not raw:
+            return None
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            parsed = raw.strip('"')
+        return parsed if isinstance(parsed, str) and parsed else None
 
     def check_command(self, item: PlanItem) -> List[str]:
         raise NotImplementedError("Use check() instead")
@@ -470,9 +532,31 @@ class PnpmGlobalManager(CommandManager):
             return CheckResult.NOT_SATISFIED
 
         if requested == "latest":
-            return CheckResult.CHECK_ERROR
+            latest_version = self._latest_registry_version(pkg, item.strategy.fields.get("registry"))
+            if latest_version is None:
+                return CheckResult.CHECK_ERROR
+            return CheckResult.SATISFIED if _v1_eq(installed_version, latest_version) else CheckResult.NOT_SATISFIED
 
         return CheckResult.SATISFIED if _v1_eq(installed_version, requested) else CheckResult.NOT_SATISFIED
+
+    def _latest_registry_version(self, pkg: str, registry: Optional[str] = None) -> Optional[str]:
+        command = ["pnpm", "view", pkg, "version", "--json"]
+        if registry:
+            command.extend(["--registry", registry])
+        try:
+            result = self.runner.run(command, check=False, capture_output=True, text=True)
+        except OSError:
+            return None
+        if result.returncode != 0:
+            return None
+        raw = result.stdout.strip()
+        if not raw:
+            return None
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            parsed = raw.strip('"')
+        return parsed if isinstance(parsed, str) and parsed else None
 
     def check_command(self, item: PlanItem) -> List[str]:
         raise NotImplementedError("Use check() instead")
@@ -631,7 +715,37 @@ class RustupManager(CommandManager):
             except OSError:
                 return CheckResult.CHECK_ERROR
 
+        if selector in ("stable", "nightly"):
+            current = self._moving_channel_current(selector)
+            if current is None:
+                return CheckResult.CHECK_ERROR
+            if not current:
+                return CheckResult.NOT_SATISFIED
+
         return CheckResult.SATISFIED
+
+    def _moving_channel_current(self, selector: str) -> Optional[bool]:
+        try:
+            result = self.runner.run(
+                ["rustup", "check"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except OSError:
+            return None
+        if result.returncode != 0:
+            return None
+        saw_selector = False
+        for line in result.stdout.splitlines():
+            stripped = line.strip().lower()
+            if stripped.startswith(selector.lower()):
+                saw_selector = True
+                if "up to date" in stripped or "up-to-date" in stripped:
+                    return True
+                if "update available" in stripped or "outdated" in stripped:
+                    return False
+        return None if not saw_selector else None
 
     def check_command(self, item: PlanItem) -> List[str]:
         raise NotImplementedError("Use check() instead")

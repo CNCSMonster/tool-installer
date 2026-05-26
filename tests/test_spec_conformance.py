@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
+from tool_installer.cli import main
 from tool_installer.environment import normalize_environment
 from tool_installer.errors import DependencyError, StrategyError, InstallationError
 from tool_installer.executor import execute_plan
@@ -241,3 +242,73 @@ def test_uv_tool_latest_non_check_capable() -> None:
         environment=Environment(os="linux", arch="x86_64"),
     )
     assert mgr.check(plan_item) == CheckResult.NOT_SATISFIED
+
+
+def test_cli_dry_run_does_not_invoke_manager_registry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Dry-run validates and prints plan but never constructs/executes real managers."""
+    tools = tmp_path / "tools.toml"
+    manifest = tmp_path / "manifest.toml"
+    write(tools, "[tool-installer]\nmanifest = 'manifest.toml'\n[dev]\ntool = ''\n")
+    write(manifest, "[tool]\n[tool.linux]\nmanager = 'apt'\npkg = 'curl'\n")
+    monkeypatch.chdir(tmp_path)
+    with patch("tool_installer.cli.default_registry") as registry:
+        assert main(["install", "dev", "--dry-run"]) == 0
+        registry.assert_not_called()
+
+
+def test_allow_fail_downgrades_check_failure_and_continues() -> None:
+    from dataclasses import dataclass, field
+    from typing import List
+
+    @dataclass
+    class ErrorManager:
+        events: List[str] = field(default_factory=list)
+        def check(self, item: PlanItem) -> CheckResult:
+            self.events.append(item.tool.reference.name + ":check")
+            return CheckResult.CHECK_ERROR
+        def install(self, item: PlanItem) -> None:
+            self.events.append(item.tool.reference.name + ":install")
+
+    @dataclass
+    class OkManager:
+        events: List[str] = field(default_factory=list)
+        def check(self, item: PlanItem) -> CheckResult:
+            self.events.append(item.tool.reference.name + ":check")
+            return CheckResult.NOT_SATISFIED
+        def install(self, item: PlanItem) -> None:
+            self.events.append(item.tool.reference.name + ":install")
+
+    err = ErrorManager()
+    ok = OkManager()
+    plan = InstallPlan([
+        PlanItem(
+            "dev",
+            ToolSpec(ToolReference("soft", "soft", "latest"), allow_fail=True),
+            MergedStrategy("soft", "err", {"manager": "err"}),
+            Environment("linux", "x86_64"),
+        ),
+        PlanItem(
+            "dev",
+            ToolSpec(ToolReference("next", "next", "latest")),
+            MergedStrategy("next", "ok", {"manager": "ok"}),
+            Environment("linux", "x86_64"),
+        ),
+    ])
+    execute_plan(plan, {"err": err, "ok": ok})
+    assert err.events == ["soft:check"]
+    assert ok.events == ["next:check", "next:install"]
+
+
+def test_fatal_strategy_error_occurs_before_installation(tmp_path: Path) -> None:
+    tools = tmp_path / "tools.toml"
+    manifest = tmp_path / "manifest.toml"
+    write(tools, "[tool-installer]\nmanifest = 'manifest.toml'\n[dev]\n'tool@1.0.0' = ''\n")
+    write(manifest, "[tool]\n[tool.linux]\nmanager = 'brew'\npkg = 'git'\n")
+    config = parse_tools_file(tools, "dev")
+    with pytest.raises(StrategyError):
+        build_install_plan(
+            collect_ordered_tools(resolve_modules(config, "dev")),
+            parse_manifest_file(manifest),
+            normalize_environment("Linux", "x86_64"),
+            tmp_path,
+        )

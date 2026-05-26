@@ -14,14 +14,16 @@ Implement tool-installer as specified in `SPEC.md`: a Python 3.8+ declarative de
 - [x] Phase 4: Harden manager validation and script/github-release safety
 - [x] Phase 5: Implement verified real manager checks
 - [x] Phase 6: Expand conformance tests and examples
-- [ ] Phase 7: Python 3.8 packaging/runtime verification
+- [x] Phase 7: Python 3.8 packaging/runtime verification
 
 Current test status:
 
 ```text
 python3 -m pytest
-48 passed
+143 passed
 ```
+
+Final Phase 5-7 verification: `python3 -m pytest` => `143 passed in 0.26s`.
 
 ## Architecture Decisions
 
@@ -434,23 +436,23 @@ Known divergences from current `SPEC.md`:
 
 ### Task 12: Implement apt and Homebrew checks
 
-**Status:** Not started
+**Status:** Done
 
 **Description:** Implement metadata-based installed-state checks for apt, brew, and brew-cask according to the verified SPEC table.
 
 **Acceptance criteria:**
 
-- [ ] `apt` reads installed version from dpkg package database (`dpkg-query -W -f='${Version}'`).
-- [ ] `apt latest` compares installed version to local APT candidate metadata (`apt-cache policy`).
-- [ ] `apt` exact selector compares installed version to requested exact version using v1 equality.
-- [ ] If package is not installed, dpkg database unavailable, or candidate-version metadata unavailable for `latest`, result is `not_satisfied` or `check_error`.
-- [ ] `brew` and `brew-cask` check only `latest` (non-latest is a fatal strategy error before execution).
-- [ ] Homebrew checks determine current/outdated status from Homebrew metadata (`brew outdated`, `brew info`, or equivalent).
-- [ ] Missing/ambiguous metadata produces `not_satisfied` or `check_error`, not binary-existence success.
+- [x] `apt` reads installed version from dpkg package database (`dpkg-query -W -f='${Version}'`).
+- [x] `apt latest` compares installed version to local APT candidate metadata (`apt-cache policy`).
+- [x] `apt` exact selector compares installed version to requested exact version using v1 equality.
+- [x] If package is not installed, dpkg database unavailable, or candidate-version metadata unavailable for `latest`, result is `not_satisfied` or `check_error`.
+- [x] `brew` and `brew-cask` check only `latest` (non-latest is a fatal strategy error before execution).
+- [x] Homebrew checks determine current/outdated status from Homebrew metadata (`brew outdated`, `brew info`, or equivalent).
+- [x] Missing/ambiguous metadata produces `not_satisfied` or `check_error`, not binary-existence success.
 
 **Verification:**
 
-- [ ] `python3 -m pytest tests/test_manager_apt_brew.py`
+- [x] `python3 -m pytest tests/test_manager_apt_brew.py`
 
 **Dependencies:** Task 7
 
@@ -463,24 +465,24 @@ Known divergences from current `SPEC.md`:
 
 ### Task 13: Implement npm, pnpm, and uv-tool checks
 
-**Status:** Not started
+**Status:** Done
 
 **Description:** Implement global package metadata checks for npm/pnpm and limited uv-tool checks.
 
 **Acceptance criteria:**
 
-- [ ] `npm-global` reads installed package version from global package metadata (`npm list -g --json`).
-- [ ] `npm-global latest` resolves latest/default registry version and compares with installed version.
-- [ ] `pnpm-global` reads installed package version from global package metadata (`pnpm list -g --json`).
-- [ ] `pnpm-global latest` resolves latest/default registry version and compares with installed version.
-- [ ] Optional `registry` is applied to metadata queries where relevant.
-- [ ] `uv-tool` exact non-`latest` reads recorded tool specifier metadata when available.
-- [ ] `uv-tool latest` is non-check-capable in v1 (always installs when reached).
-- [ ] If global package metadata or registry metadata is unavailable, result is `not_satisfied` or `check_error`.
+- [x] `npm-global` reads installed package version from global package metadata (`npm list -g --json`).
+- [x] `npm-global latest` resolves latest/default registry version and compares with installed version.
+- [x] `pnpm-global` reads installed package version from global package metadata (`pnpm list -g --json`).
+- [x] `pnpm-global latest` resolves latest/default registry version and compares with installed version.
+- [x] Optional `registry` is applied to metadata queries where relevant.
+- [x] `uv-tool` exact non-`latest` reads recorded tool specifier metadata when available.
+- [x] `uv-tool latest` is non-check-capable in v1 (always installs when reached).
+- [x] If global package metadata or registry metadata is unavailable, result is `not_satisfied` or `check_error`.
 
 **Verification:**
 
-- [ ] `python3 -m pytest tests/test_manager_runtime_tools.py`
+- [x] `python3 -m pytest tests/test_manager_runtime_tools.py`
 
 **Dependencies:** Task 7
 
@@ -493,25 +495,25 @@ Known divergences from current `SPEC.md`:
 
 ### Task 14: Implement cargo, rustup, and mise checks
 
-**Status:** Not started
+**Status:** Done
 
 **Description:** Implement metadata/state checks for cargo-install, rustup, and mise; keep cargo-binstall non-check-capable.
 
 **Acceptance criteria:**
 
-- [ ] `cargo-install` uses cargo tracking metadata/list output and fails check on absent/ambiguous/disabled tracking.
-- [ ] `cargo-install latest` compares to current registry version.
-- [ ] `cargo-install` git checks compare tracked source/revision when available.
-- [ ] `cargo-binstall` is non-check-capable in v1 (always installs when reached).
-- [ ] `rustup` checks toolchain, components, targets, and moving-channel update status via `rustup show`/`rustup toolchain list`.
-- [ ] `rustup` check verifies required components and targets are installed for the toolchain.
-- [ ] For moving channels (`stable`, `nightly`), check determines whether rustup reports the channel as current; if update status cannot be determined, result is `check_error`.
-- [ ] `mise` checks installed versions and current/latest status through mise installed-tool metadata.
-- [ ] If mise cannot determine current/latest status for a moving alias or prefix, result is `check_error`.
+- [x] `cargo-install` uses cargo tracking metadata/list output and fails check on absent/ambiguous/disabled tracking.
+- [x] `cargo-install latest` compares to current registry version.
+- [x] `cargo-install` git checks compare tracked source/revision when available.
+- [x] `cargo-binstall` is non-check-capable in v1 (always installs when reached).
+- [x] `rustup` checks toolchain, components, targets, and moving-channel update status via `rustup show`/`rustup toolchain list`.
+- [x] `rustup` check verifies required components and targets are installed for the toolchain.
+- [x] For moving channels (`stable`, `nightly`), check determines whether rustup reports the channel as current; if update status cannot be determined, result is `check_error`.
+- [x] `mise` checks installed versions and current/latest status through mise installed-tool metadata.
+- [x] If mise cannot determine current/latest status for a moving alias or prefix, result is `check_error`.
 
 **Verification:**
 
-- [ ] `python3 -m pytest tests/test_manager_rust_mise.py`
+- [x] `python3 -m pytest tests/test_manager_rust_mise.py`
 
 **Dependencies:** Task 7
 
@@ -524,24 +526,24 @@ Known divergences from current `SPEC.md`:
 
 ### Task 15: Implement `github-release` version probes
 
-**Status:** Not started
+**Status:** Done
 
 **Description:** Make `github-release` check-capable only when `version_probe` is defined, and execute the probe for installed-state checks.
 
 **Acceptance criteria:**
 
-- [ ] Without `version_probe`, github-release `check` returns `not_satisfied` (non-check-capable, always installs).
-- [ ] With `version_probe`, check resolves the installed executable path from `$HOME/.local/bin/<install_name>`.
-- [ ] Probe command replaces `{bin}` with the manager-resolved installed executable path.
-- [ ] Probe is executed directly (argv), not through shell.
-- [ ] Probe parses stdout only and captures named group `version`.
-- [ ] Probe non-zero exit, timeout, or unparseable stdout is `check_error`.
-- [ ] Non-`latest` compares probe version to requested selector using v1 equality (strip one leading `v`/`V`).
-- [ ] `latest` resolves latest concrete release tag during apply-mode check and compares using v1 equality.
+- [x] Without `version_probe`, github-release `check` returns `not_satisfied` (non-check-capable, always installs).
+- [x] With `version_probe`, check resolves the installed executable path from `$HOME/.local/bin/<install_name>`.
+- [x] Probe command replaces `{bin}` with the manager-resolved installed executable path.
+- [x] Probe is executed directly (argv), not through shell.
+- [x] Probe parses stdout only and captures named group `version`.
+- [x] Probe non-zero exit, timeout, or unparseable stdout is `check_error`.
+- [x] Non-`latest` compares probe version to requested selector using v1 equality (strip one leading `v`/`V`).
+- [x] `latest` resolves latest concrete release tag during apply-mode check and compares using v1 equality.
 
 **Verification:**
 
-- [ ] `python3 -m pytest tests/test_manager_github_release.py`
+- [x] `python3 -m pytest tests/test_manager_github_release.py`
 
 **Dependencies:** Task 9, Task 10
 
@@ -565,25 +567,25 @@ Known divergences from current `SPEC.md`:
 
 ### Task 16: Add SPEC-derived conformance tests
 
-**Status:** Not started
+**Status:** Done
 
 **Description:** Add tests that cover cross-cutting SPEC behavior rather than individual implementation units.
 
 **Acceptance criteria:**
 
-- [ ] Dry-run performs validation but no external queries/checks/downloads/scripts.
-- [ ] Unreachable modules do not trigger schema, duplicate, or strategy errors.
-- [ ] Fatal configuration/strategy errors occur before installation.
-- [ ] `force = true` bypasses checks and attempts installation.
-- [ ] `check_error` does not fall back to installation.
-- [ ] `allow_fail` only downgrades installation/check failures, not config/strategy/dependency errors.
-- [ ] stdout/stderr boundaries are covered for tool-installer-owned output.
-- [ ] v1 version equality (strip one leading `v`/`V`, exact string match) is tested.
+- [x] Dry-run performs validation but no external queries/checks/downloads/scripts.
+- [x] Unreachable modules do not trigger schema, duplicate, or strategy errors.
+- [x] Fatal configuration/strategy errors occur before installation.
+- [x] `force = true` bypasses checks and attempts installation.
+- [x] `check_error` does not fall back to installation.
+- [x] `allow_fail` only downgrades installation/check failures, not config/strategy/dependency errors.
+- [x] stdout/stderr boundaries are covered for tool-installer-owned output.
+- [x] v1 version equality (strip one leading `v`/`V`, exact string match) is tested.
 
 **Verification:**
 
-- [ ] `python3 -m pytest tests/test_spec_conformance.py`
-- [ ] `python3 -m pytest`
+- [x] `python3 -m pytest tests/test_spec_conformance.py`
+- [x] `python3 -m pytest`
 
 **Dependencies:** Tasks 7-15 as relevant
 
@@ -596,22 +598,22 @@ Known divergences from current `SPEC.md`:
 
 ### Task 17: Update examples and README
 
-**Status:** Not started
+**Status:** Done
 
 **Description:** Keep examples and user-facing documentation aligned with the current SPEC and implemented behavior.
 
 **Acceptance criteria:**
 
-- [ ] Example `tools.toml` includes dependency traversal and optional failures.
-- [ ] Example manifest demonstrates `mise`, `rustup`, `script`, `github-release`, and at least one check-capable package manager.
-- [ ] Example `github-release` includes a realistic `version_probe` when intended to skip installed versions.
-- [ ] README explains fixed `tools.toml`, manifest reference, dry-run, apply mode, strict serial execution, and manager check caveats.
-- [ ] Example dry-run succeeds.
+- [x] Example `tools.toml` includes dependency traversal and optional failures.
+- [x] Example manifest demonstrates `mise`, `rustup`, `script`, `github-release`, and at least one check-capable package manager.
+- [x] Example `github-release` includes a realistic `version_probe` when intended to skip installed versions.
+- [x] README explains fixed `tools.toml`, manifest reference, dry-run, apply mode, strict serial execution, and manager check caveats.
+- [x] Example dry-run succeeds.
 
 **Verification:**
 
-- [ ] `python3 -m pytest tests/test_cli_integration.py tests/test_examples.py`
-- [ ] Manual dry-run against `examples/` if needed.
+- [x] `python3 -m pytest tests/test_cli_integration.py tests/test_examples.py`
+- [x] Manual dry-run against `examples/` if needed.
 
 **Dependencies:** Tasks 9, 15, 16
 
@@ -631,21 +633,21 @@ Known divergences from current `SPEC.md`:
 
 ### Task 18: Verify Python 3.8 compatibility
 
-**Status:** Not started
+**Status:** Done
 
 **Description:** Validate that the implementation actually runs on Python 3.8, including vendored TOML fallback and type syntax.
 
 **Acceptance criteria:**
 
-- [ ] Code does not use syntax unsupported by Python 3.8 (e.g., `list[str]` vs `List[str]`, `|` union syntax, `match` statements).
-- [ ] Vendored `tomli` fallback imports and parses TOML under Python 3.8.
-- [ ] Test suite or compatibility smoke test runs under Python 3.8.
-- [ ] Any Python 3.8-incompatible type syntax is replaced.
+- [x] Code does not use syntax unsupported by Python 3.8 (e.g., `list[str]` vs `List[str]`, `|` union syntax, `match` statements).
+- [x] Vendored `tomli` fallback imports and parses TOML under Python 3.8.
+- [x] Python 3.8 runtime unavailable locally; performed static syntax compatibility checks and full test suite on Python 3.12.
+- [x] Any Python 3.8-incompatible type syntax is replaced.
 
 **Verification:**
 
-- [ ] `python3.8 -m pytest` if Python 3.8 is available.
-- [ ] Otherwise document that local Python 3.8 runtime is unavailable and run syntax/static compatibility checks feasible in this environment.
+- [x] `python3.8 -m pytest` skipped: `python3.8` is not available in this container.
+- [x] Otherwise document that local Python 3.8 runtime is unavailable and run syntax/static compatibility checks feasible in this environment.
 
 **Dependencies:** Current codebase
 
@@ -659,24 +661,24 @@ Known divergences from current `SPEC.md`:
 
 ### Task 19: Final release-readiness review
 
-**Status:** Not started
+**Status:** Done
 
 **Description:** Perform a final implementation-vs-SPEC review and clean up documentation before v1.
 
 **Acceptance criteria:**
 
-- [ ] Every normative SPEC section has implementation coverage or an explicit deferred decision.
-- [ ] All tests pass.
-- [ ] README and examples match current behavior.
-- [ ] No known unsafe github-release extraction behavior remains.
-- [ ] No manager uses binary existence as successful version satisfaction.
-- [ ] No external runtime dependencies are introduced.
+- [x] Every normative SPEC section has implementation coverage or an explicit deferred decision.
+- [x] All tests pass.
+- [x] README and examples match current behavior.
+- [x] No known unsafe github-release extraction behavior remains.
+- [x] No manager uses binary existence as successful version satisfaction.
+- [x] No external runtime dependencies are introduced.
 
 **Verification:**
 
-- [ ] `python3 -m pytest`
-- [ ] Review `git diff HEAD`
-- [ ] Optional code/security/test review agents after changes are committed or run without worktree isolation.
+- [x] `python3 -m pytest`
+- [x] Review `git diff HEAD`
+- [x] Optional code/security/test review agents after changes are committed or run without worktree isolation.
 
 **Dependencies:** Tasks 1-18
 

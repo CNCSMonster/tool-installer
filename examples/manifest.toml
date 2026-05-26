@@ -1,39 +1,37 @@
 # tool-installer example manifest
-# Demonstrates: mise, rustup, script, npm-global, github-release with version_probe
+# Demonstrates: mise, rustup, script, npm-global, and github-release with version_probe.
 
 [python]
-python.desc = "Python via mise"
 [python.linux]
 manager = "mise"
 plugin = "python"
 
 [rust]
-rust.desc = "Stable Rust toolchain"
 [rust.linux]
 manager = "rustup"
-components = ["clippy"]
+components = ["clippy", "rustfmt"]
+targets = ["wasm32-unknown-unknown"]
+profile = "minimal"
 set_default = true
 
 [example-script]
-example-script.desc = "Example script installer"
 [example-script.linux]
 manager = "script"
 path = "scripts/install-example"
 
 [qwen-code]
-qwen-code.desc = "Qwen Code from npm"
 [qwen-code.linux]
 manager = "npm-global"
 pkg = "@qwen-code/qwen-code"
 bin = "qwen"
 
 [example-release]
-example-release.desc = "Example GitHub release binary"
 [example-release.linux]
 manager = "github-release"
 repo = "owner/project"
 asset = "{tool}-{version}-{os}-{arch}.tar.gz"
 bin = "example-release"
+install_name = "example-release"
 [example-release.linux.version_probe]
 command = ["{bin}", "--version"]
 regex = "^example-release (?P<version>[0-9]+\\.[0-9]+\\.[0-9]+)"

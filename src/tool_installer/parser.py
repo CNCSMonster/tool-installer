@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Set, Tuple
 
 from .errors import ConfigError, ManifestError
 from .models import ModuleSpec, ToolReference, ToolSpec, ToolsConfig
@@ -87,8 +87,8 @@ def _validate_root_tables(data: Mapping[str, Any], path: Path, error_type: type[
             raise error_type(f"Bare top-level keys are not supported in {path}: {key}")
 
 
-def _reachable_module_names(raw_modules: Mapping[str, Mapping[str, Any]], target_module: str) -> set[str]:
-    reachable: set[str] = set()
+def _reachable_module_names(raw_modules: Mapping[str, Mapping[str, Any]], target_module: str) -> Set[str]:
+    reachable: Set[str] = set()
 
     def visit(name: str) -> None:
         if name in reachable:

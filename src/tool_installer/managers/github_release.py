@@ -21,6 +21,15 @@ from ..models import PlanItem
 from .base import CheckResult, Manager
 
 
+def _is_relative_to(path: Path, base: Path) -> bool:
+    """Python 3.8-compatible Path.is_relative_to()."""
+    try:
+        path.relative_to(base)
+        return True
+    except ValueError:
+        return False
+
+
 class GithubReleaseManager:
     """Manager for GitHub release downloads.
 
@@ -204,7 +213,7 @@ class GithubReleaseManager:
                     continue
 
                 target = dest_resolved / Path(info.filename)
-                if not target.resolve().is_relative_to(dest_resolved):
+                if not _is_relative_to(target.resolve(), dest_resolved):
                     raise InstallationError(f"Archive entry escapes extraction directory: {info.filename}")
                 if info.filename.endswith("/"):
                     target.mkdir(parents=True, exist_ok=True)
@@ -234,7 +243,7 @@ class GithubReleaseManager:
                     raise InstallationError(f"Archive entry contains parent traversal: {member.name}")
 
                 target = dest_resolved / member.name
-                if not target.resolve().is_relative_to(dest_resolved):
+                if not _is_relative_to(target.resolve(), dest_resolved):
                     raise InstallationError(f"Archive entry escapes extraction directory: {member.name}")
 
                 # Handle symlinks: resolve target must stay within dest
@@ -246,7 +255,7 @@ class GithubReleaseManager:
                     else:
                         # Hard link
                         link_target = dest_resolved / link_name
-                    if not link_target.is_relative_to(dest_resolved):
+                    if not _is_relative_to(link_target, dest_resolved):
                         raise InstallationError(f"Symlink/hardlink escapes extraction directory: {member.name} -> {member.linkname}")
 
                 # Extract the entry safely

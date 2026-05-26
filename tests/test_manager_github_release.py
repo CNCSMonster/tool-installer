@@ -314,9 +314,10 @@ extra_field = true
 import io
 import tarfile
 import zipfile
+from typing import List, Tuple
 
 
-def _make_zip(entries: list[tuple[str, bytes]]) -> bytes:
+def _make_zip(entries: List[Tuple[str, bytes]]) -> bytes:
     """Create a zip archive in memory with the given (path, content) entries."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
@@ -325,7 +326,7 @@ def _make_zip(entries: list[tuple[str, bytes]]) -> bytes:
     return buf.getvalue()
 
 
-def _make_tar(entries: list[tuple[str, bytes]]) -> bytes:
+def _make_tar(entries: List[Tuple[str, bytes]]) -> bytes:
     """Create a tar.gz archive in memory with the given (path, content) entries."""
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tf:
@@ -337,7 +338,7 @@ def _make_tar(entries: list[tuple[str, bytes]]) -> bytes:
     return buf.getvalue()
 
 
-def _make_tar_with_symlink(entries: list[tuple[str, bytes]], symlinks: list[tuple[str, str]]) -> bytes:
+def _make_tar_with_symlink(entries: List[Tuple[str, bytes]], symlinks: List[Tuple[str, str]]) -> bytes:
     """Create a tar.gz with regular files and symlinks."""
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tf:

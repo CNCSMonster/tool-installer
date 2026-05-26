@@ -1,0 +1,2 @@
+#!/bin/sh
+printf 'installing %s %s\n' "$TOOL_INSTALLER_TOOL_NAME" "$TOOL_INSTALLER_VERSION"

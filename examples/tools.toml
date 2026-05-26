@@ -1,0 +1,12 @@
+[tool-installer]
+manifest = "./manifest.toml"
+
+[base]
+python = "Python via mise"
+rust = "Stable Rust toolchain"
+
+[dev]
+depends = ["base"]
+example-script = { desc = "Example script installer", allow_fail = true }
+qwen-code = "Qwen Code from npm"
+example-release = "Example GitHub release binary"

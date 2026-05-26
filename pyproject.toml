@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tool-installer"
+version = "0.1.0"
+description = "Declarative development environment installation orchestrator"
+readme = "SPEC.md"
+requires-python = ">=3.8"
+dependencies = []
+
+[project.scripts]
+tool-installer = "tool_installer.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

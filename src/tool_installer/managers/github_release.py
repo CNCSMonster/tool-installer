@@ -19,7 +19,8 @@ from pathlib import Path
 from typing import List, Optional
 
 from ..errors import InstallationError
-from ..models import NetworkConfig, PlanItem
+from ..github_token import detect_github_token
+from ..models import GithubReleaseConfig, PlanItem
 from .base import CheckResult, Manager
 
 
@@ -38,11 +39,30 @@ class GithubReleaseManager:
     Check-capable only when version_probe is defined in the strategy.
     Without version_probe, always returns NOT_SATISFIED (non-check-capable).
 
-    Supports mirror fallback and retry/timeout via NetworkConfig.
+    Supports mirror fallback and retry/timeout via GithubReleaseConfig.
     """
 
-    def __init__(self, network_config: Optional[NetworkConfig] = None) -> None:
-        self._net = network_config or NetworkConfig()
+    def __init__(self, gh_config: Optional[GithubReleaseConfig] = None) -> None:
+        self._cfg = gh_config or GithubReleaseConfig()
+        self._token: Optional[str] = None
+        self._token_source: Optional[str] = None
+        self._token_resolved = False
+
+    def ensure_token(self) -> None:
+        """Resolve GitHub token once per process. Idempotent."""
+        if self._token_resolved:
+            return
+        self._token_resolved = True
+        self._token, self._token_source = detect_github_token()
+
+    def get_token_report(self) -> str:
+        """Return a human-readable token source description for display."""
+        self.ensure_token()
+        return self._token_source or "not configured"
+
+    def has_token(self) -> bool:
+        self.ensure_token()
+        return self._token is not None
 
     def check(self, item: PlanItem) -> CheckResult:
         version_probe = item.strategy.fields.get("version_probe")
@@ -169,22 +189,35 @@ class GithubReleaseManager:
     def _build_download_urls(self, repo: str, path: str) -> List[str]:
         """Build a list of URLs to try: mirrors first, then direct GitHub."""
         urls: List[str] = []
-        for mirror in self._net.github_mirrors:
+        for mirror in self._cfg.github_mirrors:
             urls.append(f"{mirror}/https://github.com/{repo}/{path}")
         urls.append(f"https://github.com/{repo}/{path}")
         return urls
+
+    @staticmethod
+    def _is_github_url(url: str) -> bool:
+        """Check if a URL points to github.com (not a mirror)."""
+        return "github.com" in url
+
+    def _apply_auth(self, req: urllib.request.Request, url: str) -> None:
+        """Add Authorization header for github.com URLs only."""
+        if self._is_github_url(url):
+            self.ensure_token()
+            if self._token:
+                req.add_header("Authorization", f"token {self._token}")
 
     def _download_asset(self, repo: str, path: str, dest: Path) -> None:
         """Download a GitHub release asset with mirror fallback and retry."""
         urls = self._build_download_urls(repo, path)
         last_error: Optional[Exception] = None
         for url in urls:
-            for attempt in range(self._net.retry + 1):
+            for attempt in range(self._cfg.retry + 1):
                 try:
                     req = urllib.request.Request(url)
-                    with urllib.request.urlopen(req, timeout=self._net.timeout) as response:
+                    self._apply_auth(req, url)
+                    with urllib.request.urlopen(req, timeout=self._cfg.timeout) as response:
                         # Read in chunks with total timeout to avoid hanging on slow transfers
-                        deadline = time.monotonic() + self._net.timeout * 3
+                        deadline = time.monotonic() + self._cfg.timeout * 3
                         chunks: List[bytes] = []
                         while True:
                             remaining = deadline - time.monotonic()
@@ -198,7 +231,7 @@ class GithubReleaseManager:
                     return
                 except (urllib.error.URLError, OSError, TimeoutError) as exc:
                     last_error = exc
-                    if attempt < self._net.retry:
+                    if attempt < self._cfg.retry:
                         time.sleep(min(2 ** attempt, 8))
             # This URL failed all retries; try next mirror
         raise InstallationError(
@@ -208,15 +241,16 @@ class GithubReleaseManager:
     def _fetch_url(self, url: str, is_api: bool = False) -> object:
         """Fetch a URL with retry and timeout. No mirror fallback for API calls."""
         last_error: Optional[Exception] = None
-        for attempt in range(self._net.retry + 1):
+        for attempt in range(self._cfg.retry + 1):
             try:
                 req = urllib.request.Request(url)
                 if is_api:
                     req.add_header("Accept", "application/vnd.github.v3+json")
-                return urllib.request.urlopen(req, timeout=self._net.timeout)
+                self._apply_auth(req, url)
+                return urllib.request.urlopen(req, timeout=self._cfg.timeout)
             except (urllib.error.URLError, OSError, TimeoutError) as exc:
                 last_error = exc
-                if attempt < self._net.retry:
+                if attempt < self._cfg.retry:
                     time.sleep(min(2 ** attempt, 8))
         raise InstallationError(f"Failed to fetch {url}: {last_error}")
 

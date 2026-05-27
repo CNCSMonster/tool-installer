@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Set, Tuple
 
 from .errors import ConfigError, ManifestError
-from .models import ModuleSpec, NetworkConfig, ToolReference, ToolSpec, ToolsConfig
+from .models import GithubReleaseConfig, ModuleSpec, ToolReference, ToolSpec, ToolsConfig
 from .toml_loader import load_toml
 
 _TOOL_REF_RE = re.compile(r"^[A-Za-z0-9._+\-]+(?:@[^@\s]+)?$")
@@ -68,11 +68,12 @@ def parse_tools_file(path: Path, target_module: str) -> ToolsConfig:
     return ToolsConfig(path=path, manifest_path=manifest_path, modules=modules)
 
 
-def parse_manifest_file(path: Path) -> Tuple[Dict[str, Dict[str, Any]], NetworkConfig]:
+def parse_manifest_file(path: Path) -> Tuple[Dict[str, Dict[str, Any]], GithubReleaseConfig]:
     data = load_toml(path)
     _validate_root_tables(data, path, error_type=ManifestError)
 
-    network_config = _parse_network_section(data.get("_network"), path)
+    gh_config = _parse_github_release_section(data.get("_github-release"), path)
+    _reject_deprecated_network_section(data, path)
 
     manifest: Dict[str, Dict[str, Any]] = {}
     for name, value in data.items():
@@ -83,45 +84,53 @@ def parse_manifest_file(path: Path) -> Tuple[Dict[str, Dict[str, Any]], NetworkC
         if "platforms" in value:
             raise ManifestError(f"Unsupported manifest field for {name}: platforms")
         manifest[name] = value
-    return manifest, network_config
+    return manifest, gh_config
 
 
-def _parse_network_section(raw: Any, path: Path) -> NetworkConfig:
+def _reject_deprecated_network_section(data: Mapping[str, Any], path: Path) -> None:
+    if "_network" in data:
+        raise ManifestError(
+            f"[_network] is no longer supported in {path}. "
+            "Use [_github-release] instead (see docs/draft-manifest-manager-config.md)."
+        )
+
+
+def _parse_github_release_section(raw: Any, path: Path) -> GithubReleaseConfig:
     if raw is None:
-        return NetworkConfig()
+        return GithubReleaseConfig()
     if not isinstance(raw, dict):
-        raise ManifestError(f"[_network] must be a table in {path}")
+        raise ManifestError(f"[_github-release] must be a table in {path}")
 
     known = {"github_mirrors", "timeout", "retry"}
     unknown = set(raw) - known
     if unknown:
-        raise ManifestError(f"Unknown [_network] fields: {', '.join(sorted(unknown))}")
+        raise ManifestError(f"Unknown [_github-release] fields: {', '.join(sorted(unknown))}")
 
     mirrors: List[str] = []
     raw_mirrors = raw.get("github_mirrors")
     if raw_mirrors is not None:
         if not isinstance(raw_mirrors, list):
-            raise ManifestError("[_network].github_mirrors must be an array")
+            raise ManifestError("[_github-release].github_mirrors must be an array")
         for i, item in enumerate(raw_mirrors):
             if not isinstance(item, str) or not item:
-                raise ManifestError(f"[_network].github_mirrors[{i}] must be a non-empty string")
+                raise ManifestError(f"[_github-release].github_mirrors[{i}] must be a non-empty string")
             mirrors.append(item.rstrip("/"))
 
     timeout = 30.0
     raw_timeout = raw.get("timeout")
     if raw_timeout is not None:
         if not isinstance(raw_timeout, (int, float)) or raw_timeout <= 0:
-            raise ManifestError("[_network].timeout must be a positive number")
+            raise ManifestError("[_github-release].timeout must be a positive number")
         timeout = float(raw_timeout)
 
     retry = 3
     raw_retry = raw.get("retry")
     if raw_retry is not None:
         if not isinstance(raw_retry, int) or raw_retry < 0:
-            raise ManifestError("[_network].retry must be a non-negative integer")
+            raise ManifestError("[_github-release].retry must be a non-negative integer")
         retry = raw_retry
 
-    return NetworkConfig(github_mirrors=mirrors, timeout=timeout, retry=retry)
+    return GithubReleaseConfig(github_mirrors=mirrors, timeout=timeout, retry=retry)
 
 
 def _validate_root_tables(data: Mapping[str, Any], path: Path, error_type: type[Exception] = ConfigError) -> None:

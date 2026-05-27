@@ -17,12 +17,13 @@ Implement tool-installer as specified in `SPEC.md`: a Python 3.8+ declarative de
 - [x] Phase 7: Python 3.8 packaging/runtime verification
 - [x] Phase 8: Single-file executable distribution
 - [x] Phase 9: Network configuration and GitHub mirror fallback
+- [x] Phase 10: Manager configuration layer and GitHub token auto-detection
 
 Current test status:
 
 ```text
 python3 -m pytest
-163 passed
+171 passed
 ```
 
 Final Phase 5-7 verification: `python3 -m pytest` => `143 passed`; latest documentation-closeout verification: `python3 -m pytest -q` => `143 passed in 0.28s`. Single-file distribution verification: `scripts/build-single` => `dist/tool-installer` is 29,925 bytes and examples dry-run succeeds; safe install verification is covered by `tests/test_distribution.py`; latest full verification: `python3 -m pytest -q` => `145 passed`. Phase 9 verification: `python3 -m pytest -q` => `163 passed` (16 new network config tests).
@@ -806,6 +807,51 @@ When completing a task:
 - `PLAN.md`
 - `tests/test_network_config.py`
 - `examples/dotfiles/tools.toml`
+- `examples/dotfiles/manifest.toml`
+
+**Scope:** Medium
+
+---
+
+## Phase 10: Manager Configuration Layer and GitHub Token Auto-Detection
+
+### Task 22: `[_github-release]` config section, token detection, and `[_network]` deprecation
+
+**Status:** Done
+
+**Description:** Replace `[_network]` with `[_github-release]` manager config section. Implement GitHub token auto-detection from `GITHUB_TOKEN` env and `gh auth token`. Add runtime token source reporting.
+
+**Acceptance criteria:**
+
+- [x] `[_github-release]` section replaces `[_network]` in manifest parsing
+- [x] `[_network]` section raises `ManifestError` with migration hint
+- [x] `GithubReleaseConfig` replaces `NetworkConfig` model
+- [x] Token auto-detection: `GITHUB_TOKEN` env → `gh auth token` → anonymous
+- [x] Token only sent to `github.com` / `api.github.com`, never to mirrors
+- [x] Runtime token source reporting in apply mode stdout
+- [x] Dry-run does not detect or report token
+- [x] Token detection failures degrade to anonymous (no install interruption)
+- [x] `github_token.py` module with `detect_github_token()` function
+
+**Verification:**
+
+- [x] `python3 -m pytest -q` => `171 passed`
+- [x] `examples/dotfiles/` dry-run succeeds
+- [x] `examples/` dry-run succeeds
+
+**Files touched:**
+
+- `src/tool_installer/models.py`
+- `src/tool_installer/parser.py`
+- `src/tool_installer/cli.py`
+- `src/tool_installer/managers/__init__.py`
+- `src/tool_installer/managers/github_release.py`
+- `src/tool_installer/github_token.py` (new)
+- `src/tool_installer/executor.py`
+- `SPEC.md`
+- `README.md`
+- `PLAN.md`
+- `tests/test_network_config.py`
 - `examples/dotfiles/manifest.toml`
 
 **Scope:** Medium

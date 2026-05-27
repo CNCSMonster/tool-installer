@@ -1,4 +1,4 @@
-"""Tests for [_network] manifest section and mirror fallback."""
+"""Tests for [_github-release] manifest section, mirror fallback, and token detection."""
 
 from __future__ import annotations
 
@@ -9,13 +9,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from tool_installer.github_token import detect_github_token
 from tool_installer.managers.github_release import GithubReleaseManager
-from tool_installer.models import NetworkConfig
+from tool_installer.models import GithubReleaseConfig
 from tool_installer.parser import parse_manifest_file
 
 
 # ---------------------------------------------------------------------------
-# _network parsing
+# helpers
 # ---------------------------------------------------------------------------
 
 
@@ -25,89 +26,128 @@ def _write_manifest(tmp_path: Path, content: str) -> Path:
     return manifest
 
 
-def test_network_defaults_when_absent(tmp_path: Path) -> None:
+def _make_mock_response(data: bytes) -> MagicMock:
+    """Create a mock HTTP response that supports chunked read()."""
+    resp = MagicMock()
+    resp.__enter__ = MagicMock(return_value=resp)
+    resp.__exit__ = MagicMock(return_value=False)
+    resp.read.side_effect = [data, b""]
+    return resp
+
+
+# ---------------------------------------------------------------------------
+# [_github-release] parsing
+# ---------------------------------------------------------------------------
+
+
+def test_gh_release_defaults_when_absent(tmp_path: Path) -> None:
     manifest = _write_manifest(tmp_path, '[tool]\n[tool.linux]\nmanager = "apt"\npkg = "git"\n')
-    _, net = parse_manifest_file(manifest)
-    assert net.github_mirrors == []
-    assert net.timeout == 30.0
-    assert net.retry == 3
+    _, cfg = parse_manifest_file(manifest)
+    assert cfg.github_mirrors == []
+    assert cfg.timeout == 30.0
+    assert cfg.retry == 3
 
 
-def test_network_full_config(tmp_path: Path) -> None:
+def test_gh_release_full_config(tmp_path: Path) -> None:
     manifest = _write_manifest(
         tmp_path,
-        '[_network]\ngithub_mirrors = ["https://m1.example.com", "https://m2.example.com"]\ntimeout = 60\nretry = 5\n\n'
+        '[_github-release]\ngithub_mirrors = ["https://m1.example.com", "https://m2.example.com"]\ntimeout = 60\nretry = 5\n\n'
         '[tool]\n[tool.linux]\nmanager = "apt"\npkg = "git"\n',
     )
-    _, net = parse_manifest_file(manifest)
-    assert net.github_mirrors == ["https://m1.example.com", "https://m2.example.com"]
-    assert net.timeout == 60.0
-    assert net.retry == 5
+    _, cfg = parse_manifest_file(manifest)
+    assert cfg.github_mirrors == ["https://m1.example.com", "https://m2.example.com"]
+    assert cfg.timeout == 60.0
+    assert cfg.retry == 5
 
 
-def test_network_mirror_trailing_slash_stripped(tmp_path: Path) -> None:
+def test_gh_release_mirror_trailing_slash_stripped(tmp_path: Path) -> None:
     manifest = _write_manifest(
         tmp_path,
-        '[_network]\ngithub_mirrors = ["https://m1.example.com/"]\n\n[tool]\n[tool.linux]\nmanager = "apt"\npkg = "git"\n',
+        '[_github-release]\ngithub_mirrors = ["https://m1.example.com/"]\n\n[tool]\n[tool.linux]\nmanager = "apt"\npkg = "git"\n',
     )
-    _, net = parse_manifest_file(manifest)
-    assert net.github_mirrors == ["https://m1.example.com"]
+    _, cfg = parse_manifest_file(manifest)
+    assert cfg.github_mirrors == ["https://m1.example.com"]
 
 
-def test_network_unknown_field_rejected(tmp_path: Path) -> None:
+def test_gh_release_unknown_field_rejected(tmp_path: Path) -> None:
     manifest = _write_manifest(
         tmp_path,
-        '[_network]\nunknown_field = true\n\n[tool]\n[tool.linux]\nmanager = "apt"\npkg = "git"\n',
+        '[_github-release]\nunknown_field = true\n\n[tool]\n[tool.linux]\nmanager = "apt"\npkg = "git"\n',
     )
-    with pytest.raises(Exception, match="Unknown.*_network"):
+    with pytest.raises(Exception, match="Unknown.*_github-release"):
         parse_manifest_file(manifest)
 
 
-def test_network_mirrors_must_be_array(tmp_path: Path) -> None:
+def test_gh_release_mirrors_must_be_array(tmp_path: Path) -> None:
     manifest = _write_manifest(
         tmp_path,
-        '[_network]\ngithub_mirrors = "not-a-list"\n\n[tool]\n[tool.linux]\nmanager = "apt"\npkg = "git"\n',
+        '[_github-release]\ngithub_mirrors = "not-a-list"\n\n[tool]\n[tool.linux]\nmanager = "apt"\npkg = "git"\n',
     )
     with pytest.raises(Exception, match="github_mirrors must be an array"):
         parse_manifest_file(manifest)
 
 
-def test_network_mirror_must_be_non_empty_string(tmp_path: Path) -> None:
+def test_gh_release_mirror_must_be_non_empty_string(tmp_path: Path) -> None:
     manifest = _write_manifest(
         tmp_path,
-        '[_network]\ngithub_mirrors = [""]\n\n[tool]\n[tool.linux]\nmanager = "apt"\npkg = "git"\n',
+        '[_github-release]\ngithub_mirrors = [""]\n\n[tool]\n[tool.linux]\nmanager = "apt"\npkg = "git"\n',
     )
     with pytest.raises(Exception, match="non-empty string"):
         parse_manifest_file(manifest)
 
 
-def test_network_timeout_must_be_positive(tmp_path: Path) -> None:
+def test_gh_release_timeout_must_be_positive(tmp_path: Path) -> None:
     manifest = _write_manifest(
         tmp_path,
-        '[_network]\ntimeout = 0\n\n[tool]\n[tool.linux]\nmanager = "apt"\npkg = "git"\n',
+        '[_github-release]\ntimeout = 0\n\n[tool]\n[tool.linux]\nmanager = "apt"\npkg = "git"\n',
     )
     with pytest.raises(Exception, match="positive number"):
         parse_manifest_file(manifest)
 
 
-def test_network_retry_must_be_non_negative_int(tmp_path: Path) -> None:
+def test_gh_release_retry_must_be_non_negative_int(tmp_path: Path) -> None:
     manifest = _write_manifest(
         tmp_path,
-        '[_network]\nretry = -1\n\n[tool]\n[tool.linux]\nmanager = "apt"\npkg = "git"\n',
+        '[_github-release]\nretry = -1\n\n[tool]\n[tool.linux]\nmanager = "apt"\npkg = "git"\n',
     )
     with pytest.raises(Exception, match="non-negative integer"):
         parse_manifest_file(manifest)
 
 
-def test_network_section_not_treated_as_tool(tmp_path: Path) -> None:
-    """[_network] must not appear as a tool in the manifest dict."""
+def test_gh_release_section_not_treated_as_tool(tmp_path: Path) -> None:
     manifest = _write_manifest(
         tmp_path,
-        '[_network]\ntimeout = 10\n\n[mytool]\n[mytool.linux]\nmanager = "apt"\npkg = "git"\n',
+        '[_github-release]\ntimeout = 10\n\n[mytool]\n[mytool.linux]\nmanager = "apt"\npkg = "git"\n',
     )
     tools, _ = parse_manifest_file(manifest)
-    assert "_network" not in tools
+    assert "_github-release" not in tools
     assert "mytool" in tools
+
+
+# ---------------------------------------------------------------------------
+# [_network] deprecated
+# ---------------------------------------------------------------------------
+
+
+def test_network_section_rejected_with_migration_hint(tmp_path: Path) -> None:
+    manifest = _write_manifest(
+        tmp_path,
+        '[_network]\ntimeout = 10\n\n[tool]\n[tool.linux]\nmanager = "apt"\npkg = "git"\n',
+    )
+    with pytest.raises(Exception, match="no longer supported.*_github-release"):
+        parse_manifest_file(manifest)
+
+
+def test_unknown_reserved_section_rejected(tmp_path: Path) -> None:
+    manifest = _write_manifest(
+        tmp_path,
+        '[_unknown]\nfoo = true\n\n[tool]\n[tool.linux]\nmanager = "apt"\npkg = "git"\n',
+    )
+    # _unknown starts with _ but is not _network or _github-release
+    # It should be silently ignored (reserved but not implemented)
+    tools, cfg = parse_manifest_file(manifest)
+    assert "_unknown" not in tools
+    assert cfg.github_mirrors == []
 
 
 # ---------------------------------------------------------------------------
@@ -116,15 +156,15 @@ def test_network_section_not_treated_as_tool(tmp_path: Path) -> None:
 
 
 def test_build_download_urls_no_mirrors() -> None:
-    mgr = GithubReleaseManager(NetworkConfig())
+    mgr = GithubReleaseManager(GithubReleaseConfig())
     urls = mgr._build_download_urls("owner/repo", "releases/download/v1.0/file.tar.gz")
     assert len(urls) == 1
     assert urls[0] == "https://github.com/owner/repo/releases/download/v1.0/file.tar.gz"
 
 
 def test_build_download_urls_with_mirrors() -> None:
-    net = NetworkConfig(github_mirrors=["https://m1.com", "https://m2.com"])
-    mgr = GithubReleaseManager(net)
+    cfg = GithubReleaseConfig(github_mirrors=["https://m1.com", "https://m2.com"])
+    mgr = GithubReleaseManager(cfg)
     urls = mgr._build_download_urls("owner/repo", "releases/download/v1.0/file.tar.gz")
     assert len(urls) == 3
     assert urls[0] == "https://m1.com/https://github.com/owner/repo/releases/download/v1.0/file.tar.gz"
@@ -137,18 +177,9 @@ def test_build_download_urls_with_mirrors() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_mock_response(data: bytes) -> MagicMock:
-    """Create a mock HTTP response that supports chunked read()."""
-    resp = MagicMock()
-    resp.__enter__ = MagicMock(return_value=resp)
-    resp.__exit__ = MagicMock(return_value=False)
-    resp.read.side_effect = [data, b""]
-    return resp
-
-
 def test_download_uses_first_mirror_on_success(tmp_path: Path) -> None:
-    net = NetworkConfig(github_mirrors=["https://mirror.ok"], timeout=5, retry=0)
-    mgr = GithubReleaseManager(net)
+    cfg = GithubReleaseConfig(github_mirrors=["https://mirror.ok"], timeout=5, retry=0)
+    mgr = GithubReleaseManager(cfg)
 
     dest = tmp_path / "asset"
     with patch("urllib.request.urlopen", return_value=_make_mock_response(b"binary-data")) as mock_open:
@@ -161,8 +192,8 @@ def test_download_uses_first_mirror_on_success(tmp_path: Path) -> None:
 
 
 def test_download_falls_back_to_direct_after_mirror_fails(tmp_path: Path) -> None:
-    net = NetworkConfig(github_mirrors=["https://mirror.bad"], timeout=1, retry=0)
-    mgr = GithubReleaseManager(net)
+    cfg = GithubReleaseConfig(github_mirrors=["https://mirror.bad"], timeout=1, retry=0)
+    mgr = GithubReleaseManager(cfg)
 
     dest = tmp_path / "asset"
     call_urls = []
@@ -177,15 +208,15 @@ def test_download_falls_back_to_direct_after_mirror_fails(tmp_path: Path) -> Non
     with patch("urllib.request.urlopen", side_effect=mock_urlopen):
         mgr._download_asset("owner/repo", "releases/download/v1.0/f.tar.gz", dest)
 
-    assert len(call_urls) == 2  # mirror failed, then direct succeeded
+    assert len(call_urls) == 2
     assert "mirror.bad" in call_urls[0]
     assert "github.com" in call_urls[1]
     assert dest.read_bytes() == b"ok-data"
 
 
 def test_download_retries_on_transient_failure(tmp_path: Path) -> None:
-    net = NetworkConfig(github_mirrors=[], timeout=1, retry=2)
-    mgr = GithubReleaseManager(net)
+    cfg = GithubReleaseConfig(github_mirrors=[], timeout=1, retry=2)
+    mgr = GithubReleaseManager(cfg)
 
     dest = tmp_path / "asset"
     attempt_count = [0]
@@ -200,13 +231,13 @@ def test_download_retries_on_transient_failure(tmp_path: Path) -> None:
         with patch("time.sleep"):
             mgr._download_asset("owner/repo", "releases/download/v1.0/f.tar.gz", dest)
 
-    assert attempt_count[0] == 3  # 2 failures + 1 success
+    assert attempt_count[0] == 3
     assert dest.read_bytes() == b"retry-ok"
 
 
 def test_download_raises_after_all_exhausted(tmp_path: Path) -> None:
-    net = NetworkConfig(github_mirrors=["https://m1"], timeout=1, retry=0)
-    mgr = GithubReleaseManager(net)
+    cfg = GithubReleaseConfig(github_mirrors=["https://m1"], timeout=1, retry=0)
+    mgr = GithubReleaseManager(cfg)
 
     dest = tmp_path / "asset"
 
@@ -224,8 +255,8 @@ def test_download_raises_after_all_exhausted(tmp_path: Path) -> None:
 def test_latest_tag_uses_timeout() -> None:
     import json
 
-    net = NetworkConfig(timeout=42, retry=0)
-    mgr = GithubReleaseManager(net)
+    cfg = GithubReleaseConfig(timeout=42, retry=0)
+    mgr = GithubReleaseManager(cfg)
 
     fake_response = MagicMock()
     fake_response.read.return_value = json.dumps({"tag_name": "v1.2.3"}).encode()
@@ -237,3 +268,63 @@ def test_latest_tag_uses_timeout() -> None:
 
     assert tag == "v1.2.3"
     assert mock_open.call_args[1].get("timeout") == 42
+
+
+# ---------------------------------------------------------------------------
+# Token detection
+# ---------------------------------------------------------------------------
+
+
+def test_token_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "ghp_test123")
+    token, source = detect_github_token()
+    assert token == "ghp_test123"
+    assert "GITHUB_TOKEN" in source
+
+
+def test_token_from_gh_cli(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    with patch("shutil.which", return_value="/usr/bin/gh"):
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="ghp_from_gh_cli\n", stderr="")
+            token, source = detect_github_token()
+    assert token == "ghp_from_gh_cli"
+    assert "gh CLI" in source
+
+
+def test_token_env_takes_priority_over_gh(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "ghp_env_token")
+    with patch("shutil.which", return_value="/usr/bin/gh"):
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="ghp_cli_token\n", stderr="")
+            token, source = detect_github_token()
+    assert token == "ghp_env_token"
+    assert "GITHUB_TOKEN" in source
+
+
+def test_token_none_when_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    with patch("shutil.which", return_value=None):
+        token, source = detect_github_token()
+    assert token is None
+    assert "not configured" in source
+
+
+def test_token_none_when_gh_not_logged_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    with patch("shutil.which", return_value="/usr/bin/gh"):
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="not logged in")
+            token, source = detect_github_token()
+    assert token is None
+    assert "not configured" in source
+
+
+def test_token_none_when_gh_empty_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    with patch("shutil.which", return_value="/usr/bin/gh"):
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+            token, source = detect_github_token()
+    assert token is None
+    assert "not configured" in source

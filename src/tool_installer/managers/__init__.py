@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
-from ..models import NetworkConfig
+from ..models import GithubReleaseConfig
 from .base import CommandRunner, Manager
 from .commands import (
     AptManager,
@@ -23,7 +23,7 @@ from .script import ScriptManager
 
 
 def default_registry(
-    network_config: Optional[NetworkConfig] = None,
+    gh_config: Optional[GithubReleaseConfig] = None,
     runner: Optional[CommandRunner] = None,
 ) -> Dict[str, Manager]:
     return {
@@ -37,6 +37,6 @@ def default_registry(
         "npm-global": NpmGlobalManager(runner),
         "pnpm-global": PnpmGlobalManager(runner),
         "uv-tool": UvToolManager(runner),
-        "github-release": GithubReleaseManager(network_config),
+        "github-release": GithubReleaseManager(gh_config),
         "script": ScriptManager(),
     }

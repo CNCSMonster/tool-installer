@@ -44,7 +44,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 def _run_install(module: str, dry_run: bool) -> int:
     tools_path = Path.cwd() / "tools.toml"
     config = parse_tools_file(tools_path, module)
-    manifest, network_config = parse_manifest_file(config.manifest_path)
+    manifest, gh_config = parse_manifest_file(config.manifest_path)
     modules = resolve_modules(config, module)
     ordered_tools = collect_ordered_tools(modules)
     environment = detect_environment()
@@ -52,5 +52,5 @@ def _run_install(module: str, dry_run: bool) -> int:
     if dry_run:
         print_dry_run(plan)
     else:
-        execute_plan(plan, default_registry(network_config))
+        execute_plan(plan, default_registry(gh_config))
     return 0

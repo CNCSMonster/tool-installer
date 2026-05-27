@@ -68,11 +68,11 @@ regex = "^fd (?P<version>[0-9]+\.[0-9]+\.[0-9]+)"
 
 ## Network configuration
 
-The manifest supports a `[_network]` reserved section for configuring GitHub download behavior.
+The manifest supports a `[_github-release]` reserved section for configuring GitHub download behavior.
 This is useful when GitHub is slow or unreachable (e.g., behind a firewall).
 
 ```toml
-[_network]
+[_github-release]
 github_mirrors = [
     "https://mirror.ghproxy.com",
     "https://ghfast.top",
@@ -83,6 +83,15 @@ retry = 3
 
 Mirrors are tried in order. If a mirror fails all retries, the next one is tried.
 If all mirrors fail, the direct GitHub URL is tried. If that also fails, the tool fails.
+
+**GitHub token**: tool-installer automatically detects authentication via `GITHUB_TOKEN`
+environment variable or `gh auth token` (GitHub CLI). The token is only sent to `github.com`,
+never to mirrors. The detected source is reported during installation:
+
+```
+🔑 GitHub token: from gh CLI (gh auth token)
+⚠️  GitHub token: not configured (anonymous, 60 req/hour)
+```
 
 Other managers (`apt`, `cargo`, `npm`, `mise`, etc.) use their own native mirror configuration.
 See `examples/dotfiles/` for a complete development-environment setup with network configuration.

@@ -237,9 +237,9 @@ The `platforms` field is not part of the supported manifest schema. Platform sup
 
 Top-level manifest keys that begin with `_` (underscore) are reserved sections and are not interpreted as tool names.
 
-### `[_network]`
+### `[_github-release]`
 
-The `[_network]` section configures global network behavior. It is optional. If absent, default network settings apply.
+The `[_github-release]` section configures the `github-release` manager. It is optional. If absent, default settings apply.
 
 | Field | Type | Required | Default | Meaning |
 |---|---|---:|---|---|
@@ -251,7 +251,32 @@ The `[_network]` section configures global network behavior. It is optional. If 
 
 For `github-release` downloads, tool-installer tries each mirror in order. If a mirror fails all retry attempts, the next mirror is tried. If all mirrors fail, the direct GitHub URL is tried with the same retry policy. If all attempts fail, the installation fails for that tool.
 
+Mirror URLs never receive an `Authorization` header. The GitHub token (if available) is only sent to `github.com` and `api.github.com`.
+
 Other managers (`apt`, `cargo`, `npm`, etc.) manage their own network configuration through their native mechanisms (e.g., `sources.list`, `cargo/config.toml`, `.npmrc`). Tool-installer does not override those configurations.
+
+`[_network]` is not supported. Use `[_github-release]` for `github-release` manager configuration.
+
+### GitHub Token
+
+Tool-installer automatically detects a GitHub token for `github-release` downloads. The detection order is:
+
+1. `GITHUB_TOKEN` environment variable (if set and non-empty)
+2. `gh auth token` (if GitHub CLI is installed and authenticated)
+
+If neither source provides a token, downloads proceed anonymously. Anonymous access is subject to GitHub's rate limit of 60 requests per hour.
+
+The token is used only for HTTP requests to `github.com` and `api.github.com`. It is never sent to mirror URLs, never persisted to disk, never logged, and never exposed in dry-run output.
+
+The detected token source is reported to stdout during apply mode:
+
+```
+🔑 GitHub token: from GITHUB_TOKEN env
+🔑 GitHub token: from gh CLI (gh auth token)
+⚠️  GitHub token: not configured (anonymous, 60 req/hour)
+```
+
+Dry-run mode does not detect or report the token.
 
 ## Environment Names
 

@@ -22,19 +22,34 @@ def _format_warning(item: PlanItem, phase: str, reason: str) -> str:
 
 
 def execute_plan(plan: InstallPlan, managers: Mapping[str, Manager]) -> None:
+    token_reported = False
     for item in plan.items:
         manager = managers[item.strategy.manager]
         try:
-            _execute_item(item, manager)
+            _execute_item(item, manager, token_reported)
+            if item.strategy.manager == "github-release":
+                token_reported = True
         except InstallationError as exc:
             if item.tool.allow_fail:
                 print(_format_warning(item, "install", str(exc)), file=sys.stderr)
+                if item.strategy.manager == "github-release":
+                    token_reported = True
                 continue
             raise
 
 
-def _execute_item(item: PlanItem, manager: Manager) -> None:
+def _execute_item(item: PlanItem, manager: Manager, token_reported: bool) -> None:
     print(f"📦 Installing {item.tool.reference.name}")
+
+    # Report GitHub token source for github-release managers
+    if item.strategy.manager == "github-release" and hasattr(manager, "get_token_report"):
+        source = manager.get_token_report()
+        if token_reported:
+            print(f"🔑 GitHub token: (cached) {source}")
+        elif "not configured" in source:
+            print(f"⚠️  GitHub token: {source}")
+        else:
+            print(f"🔑 GitHub token: {source}")
 
     if item.strategy.force:
         # Bypass check and attempt installation

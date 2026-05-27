@@ -1,10 +1,10 @@
 # Manifest for dotfiles development environment
-# Demonstrates: [_network] mirror config, multiple managers, version probes.
+# Demonstrates: [_github-release] config, GitHub token auto-detection, multiple managers.
 
 # ============================================================
-# Network: GitHub mirror fallback for users behind GFW
+# GitHub release manager configuration
 # ============================================================
-[_network]
+[_github-release]
 github_mirrors = [
     "https://mirror.ghproxy.com",
     "https://ghfast.top",

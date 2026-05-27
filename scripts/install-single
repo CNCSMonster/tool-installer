@@ -1,0 +1,48 @@
+#!/bin/sh
+# Safely install the single-file tool-installer artifact from a URL.
+#
+# Usage:
+#   scripts/install-single <artifact-url> [destination]
+#
+# The artifact is downloaded to a temporary file, smoke-tested with Python,
+# made executable, and then moved into place.  Existing installations are not
+# replaced unless the downloaded artifact passes validation.
+
+set -eu
+
+usage() {
+  echo "Usage: $0 <artifact-url> [destination]" >&2
+}
+
+if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
+  usage
+  exit 2
+fi
+
+url=$1
+dest=${2:-"$HOME/.local/bin/tool-installer"}
+
+tmpdir=${TMPDIR:-/tmp}
+tmp=$(mktemp "$tmpdir/tool-installer.XXXXXX")
+
+cleanup() {
+  rm -f "$tmp"
+}
+trap cleanup EXIT HUP INT TERM
+
+if command -v curl >/dev/null 2>&1; then
+  curl -fL --retry 3 -o "$tmp" "$url"
+elif command -v wget >/dev/null 2>&1; then
+  wget -O "$tmp" "$url"
+else
+  echo "Error: curl or wget is required" >&2
+  exit 1
+fi
+
+python3 "$tmp" --help >/dev/null
+chmod +x "$tmp"
+mkdir -p "$(dirname "$dest")"
+mv "$tmp" "$dest"
+trap - EXIT HUP INT TERM
+
+echo "Installed tool-installer to $dest"

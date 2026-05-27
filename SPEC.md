@@ -8,9 +8,11 @@ This document is intended to be a stable behavior contract for v1 unless explici
 
 ## Specification Boundary
 
-This document defines language-agnostic and implementation-agnostic behavior.
+This document primarily defines language-agnostic and implementation-agnostic behavior.
 
-It does not require a specific programming language, TOML parser, CLI library, internal module layout, class name, function name, test framework, or package-manager command implementation, except where those choices affect user-visible behavior, safety, compatibility, or exit semantics.
+It does not require a specific CLI library, internal module layout, class name, function name, test framework, or package-manager command implementation, except where those choices affect user-visible behavior, safety, compatibility, distribution, or exit semantics.
+
+The v1 distribution contract intentionally requires a Python-based single-file executable form because portability across hosts with an existing Python interpreter and a small artifact size are user-visible compatibility requirements.
 
 ## Goal
 
@@ -37,12 +39,15 @@ Tool-Installer is responsible for:
 - producing a dry-run installation plan
 - executing tool checks and installations strictly serially
 - handling installation failures according to each tool's failure policy
+- providing a compact single-file executable distribution for hosts that already have Python
 
 Tool-Installer is not a general-purpose package manager.
 
 It does not solve package dependency conflicts, replace system package managers, maintain a global package database, perform cross-manager version resolution, automatically discover installation strategies, install tools concurrently, sandbox external manager commands, or provide transactional rollback.
 
 Tool-Installer does not put OS/Arch, manager, or install-command selection logic in `tools.toml`. Platform-specific installation behavior belongs in the manifest file.
+
+Tool-Installer is not required to ship a native binary or embed a Python interpreter.
 
 ## Commands
 
@@ -581,6 +586,21 @@ Tool-installer's own warnings and errors must be written to stderr.
 Output produced by external managers and scripts may be streamed through to the same stdout/stderr channels used by those external processes. Tool-Installer is not required to normalize, parse, translate, or make stable the output of external managers.
 
 There is no machine-readable output mode in v1.
+
+## Distribution
+
+Tool-Installer v1 must be easy to distribute to machines that already have Python but may not have project-specific Python packages installed.
+
+The project must provide:
+
+- a compact single-file executable artifact that preserves the `tool-installer` CLI behavior;
+- a safe installation path for downloading that artifact without corrupting an existing working installation when the download fails or is incomplete.
+
+The single-file artifact must be self-contained with respect to Tool-Installer's Python code, including TOML parsing on Python versions without the `tomllib` standard-library module. It may rely on the host Python interpreter and on external package managers selected by the user's manifest; it is not required to embed CPython or bundle host package managers.
+
+The generated artifact must remain below 400 KiB, measured as at most 409,600 bytes. Smaller artifacts are preferred when they preserve behavior and compatibility.
+
+Release verification must prove that the artifact is executable, satisfies the size limit, works without non-standard Python packages on the target host, and can run the documented smoke checks.
 
 ## Security and Trust Model
 

@@ -66,6 +66,38 @@ command = ["{bin}", "--version"]
 regex = "^fd (?P<version>[0-9]+\.[0-9]+\.[0-9]+)"
 ```
 
+
+## Single-file executable
+
+The project can build a compact single-file executable for hosts that already have Python 3.8+.
+The artifact is a Python zip application with a shebang; it does not embed CPython and does not
+require runtime packages from PyPI. The vendored TOML fallback is included, so it also works on
+Python versions without the standard-library `tomllib` module.
+
+Build and verify the artifact:
+
+```bash
+scripts/build-single
+wc -c dist/tool-installer  # must be <= 409600 bytes
+./dist/tool-installer --help
+cd examples && ../dist/tool-installer install dev --dry-run
+```
+
+Install a published artifact safely from a URL:
+
+```bash
+curl -fsSL https://example.com/install-single -o /tmp/install-tool-installer
+sh /tmp/install-tool-installer https://example.com/tool-installer
+```
+
+The install script downloads to a temporary file, verifies `python3 <tmp> --help`, then replaces
+the destination only after validation succeeds. The default destination is
+`~/.local/bin/tool-installer`; pass a second argument to choose another path.
+
+The build script verifies that the artifact is executable, below 400 KiB, can print CLI help,
+and can dry-run the example fixture. External package managers such as `apt`, `brew`, `cargo`,
+`rustup`, `npm`, `pnpm`, `uv`, and `mise` remain host-provided dependencies.
+
 ## Dry-run vs apply mode
 
 `--dry-run` resolves dependencies, merges and validates strategies, then prints the serial plan.

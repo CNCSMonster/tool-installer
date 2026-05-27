@@ -27,7 +27,8 @@ class CommandRunner(Protocol):
 
 class SubprocessRunner:
     def run(self, args: Sequence[str], check: bool = False, **kwargs: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(list(args), check=check, text=True, **kwargs)
+        kwargs.setdefault("text", True)
+        return subprocess.run(list(args), check=check, **kwargs)
 
 
 def _is_root() -> bool:

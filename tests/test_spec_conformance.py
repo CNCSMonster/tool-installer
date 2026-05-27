@@ -184,7 +184,6 @@ def test_v1_version_equality() -> None:
     # SPEC: strip ONE leading v/V from EACH side
     # "vv1.0.0" -> strip one v -> "v1.0.0"
     # "v1.0.0" -> strip one v -> "1.0.0"
-    # "v1.0.0" != "1.0.0" after stripping? No: v1.0.0 -> 1.0.0, so they don't match
     assert _v1_eq("vv1.0.0", "v1.0.0") is False  # vv1.0.0 -> v1.0.0 vs 1.0.0 — not equal
 
 

@@ -15,15 +15,16 @@ Implement tool-installer as specified in `SPEC.md`: a Python 3.8+ declarative de
 - [x] Phase 5: Implement verified real manager checks
 - [x] Phase 6: Expand conformance tests and examples
 - [x] Phase 7: Python 3.8 packaging/runtime verification
+- [x] Phase 8: Single-file executable distribution
 
 Current test status:
 
 ```text
 python3 -m pytest
-143 passed
+145 passed
 ```
 
-Final Phase 5-7 verification: `python3 -m pytest` => `143 passed in 0.26s`.
+Final Phase 5-7 verification: `python3 -m pytest` => `143 passed`; latest documentation-closeout verification: `python3 -m pytest -q` => `143 passed in 0.28s`. Single-file distribution verification: `scripts/build-single` => `dist/tool-installer` is 29,925 bytes and examples dry-run succeeds; safe install verification is covered by `tests/test_distribution.py`; latest full verification: `python3 -m pytest -q` => `145 passed`.
 
 ## Architecture Decisions
 
@@ -38,33 +39,27 @@ Final Phase 5-7 verification: `python3 -m pytest` => `143 passed in 0.26s`.
 
 ## Current Implementation Snapshot
 
-Already present:
+Already present and verified:
 
 - Python package scaffold and CLI entry point.
 - TOML loading with Python 3.11+ `tomllib` and vendored `tomli` fallback path.
-- Basic `tools.toml` parsing with selected-scope validation.
-- Manifest loading and OS/Arch strategy merge.
-- Dependency traversal, cycle detection, diamond deduplication, duplicate tool detection within selected scope.
-- Dry-run CLI path and example dry-run test.
-- Basic manager registry and command construction for all supported managers.
-- Initial `script` and `github-release` managers.
-- Test suite currently passes on Python 3.12.
+- `tools.toml` parsing with selected-scope validation.
+- Manifest loading, OS/Arch strategy merge, and `bin` defaults for managers that support binaries.
+- Dependency traversal, cycle detection, diamond deduplication, and duplicate tool detection within selected scope.
+- Dry-run CLI path that performs validation without executing checks, external queries, downloads, scripts, or mutations.
+- Explicit installed-state check outcomes: `satisfied`, `not_satisfied`, and `check_error`.
+- Manager registry and command construction for all supported v1 managers.
+- Metadata/state-based installed-state checks for check-capable managers.
+- Non-check-capable behavior for `cargo-binstall`, `script`, `github-release` without `version_probe`, and `uv-tool` with `latest`.
+- `github-release.version_probe` validation and apply-mode probe execution.
+- Fail-closed `github-release` archive extraction and atomic install behavior.
+- Script manager path containment, direct execution, and environment contract.
+- SPEC-derived conformance coverage, updated examples, and README.
+- Single-file Python zip application build via `scripts/build-single`; generated artifact includes vendored TOML fallback, is executable, and is verified below 400 KiB.
+- Safe artifact installation via `scripts/install-single`, which downloads to a temporary file, validates the artifact, and only then replaces the destination.
+- Test suite passes on Python 3.12 and Python 3.8.20 (verified via `uv run --python 3.8` in devbox container).
 
-Known divergences from current `SPEC.md`:
-
-- **Check model is boolean, not 3-outcome**: Executor uses `is_installed() -> bool` instead of SPEC's `satisfied`/`not_satisfied`/`check_error` outcomes.
-- **All `CommandManager` checks use binary existence only**: Every package manager (apt, brew, cargo, npm, pnpm, uv, mise, rustup) checks only `command -v`, violating SPEC's requirement for metadata-based checks and the rule that binary existence alone is never sufficient.
-- **`cargo-binstall` incorrectly marked check-capable**: SPEC says `cargo-binstall` is NOT check-capable in v1, but it inherits `supports_check = True` from `CommandManager`.
-- **`uv-tool latest` should be non-check-capable**: SPEC says `uv-tool` `latest` checks are not check-capable in v1, but current code treats all uv-tool items as check-capable.
-- **`github-release` check capability is unconditional**: SPEC says `github-release` is check-capable ONLY when `version_probe` is defined; otherwise not check-capable. Current code always has `supports_check = True` and checks file existence only.
-- **`github-release` ignores `version_probe`**: The `version_probe` subtable is not validated in strategy resolution, not stored in merged strategy fields, and never executed.
-- **`github-release` archive extraction is unsafe**: Uses `extractall` without path/symlink containment. SPEC requires fail-closed extraction into a staging location with absolute path, traversal, and symlink containment checks.
-- **`github-release` install is not atomic**: Current code copies directly to destination. SPEC says "must not replace or remove an existing installed executable until the release asset has been downloaded, verified when `sha256` is present, and the requested `bin` has been located successfully."
-- **`github-release` `version_probe` missing from strategy validation**: `_SUPPORTED["github-release"]["optional"]` does not include `version_probe`, so a manifest with `version_probe` would cause an "Unknown strategy fields" error.
-- **`rustup` check doesn't verify components/targets**: SPEC says the check "must determine whether the corresponding rustup toolchain is installed, required components are installed for that toolchain, and required targets are installed for that toolchain." Current check only runs `rustup toolchain list`.
-- **`allow_fail` warnings missing required fields**: SPEC says warnings "must identify the tool name, selected manager, failure phase (`check` or `install`), and the available failure reason." Current warnings are a single string without structured fields.
-- **`bin` default not set in strategy resolution**: SPEC says `bin`, when supported, "defaults to the parsed logical tool name" if omitted. Strategy resolution doesn't apply this default.
-- **`rustup` check_command uses shell**: `RustupManager.check_command` returns `["sh", "-c", "rustup toolchain list ... >/dev/null"]`. SPEC prefers direct argv execution where possible.
+Known divergences from current `SPEC.md`: none for v1 release readiness.
 
 ---
 
@@ -183,11 +178,11 @@ Known divergences from current `SPEC.md`:
 
 **Scope:** Medium
 
-### Checkpoint: Current Baseline
+### Checkpoint: Historical Phase 1 Baseline
 
-- [x] `python3 -m pytest` passes: `22 passed`.
+- [x] `python3 -m pytest` passed at the Phase 1 checkpoint: `22 passed`.
 - [x] Example dry-run succeeds.
-- [ ] Current apply-mode installed-state checks do not yet satisfy `SPEC.md`.
+- [x] Current apply-mode installed-state checks satisfy `SPEC.md` after Phase 3-5 refactors.
 
 ---
 
@@ -195,20 +190,20 @@ Known divergences from current `SPEC.md`:
 
 ### Task 5: Basic executor and fake manager semantics
 
-**Status:** Done, needs SPEC-alignment refactor in Phase 3
+**Status:** Done; SPEC-alignment refactor completed in Phase 3
 
 **Acceptance criteria completed:**
 
 - [x] Executes plan in order.
 - [x] Honors `force` by skipping current check path.
-- [x] Skips installed items in current boolean check model.
+- [x] Historically skipped installed items in the initial boolean check model before the Phase 3 refactor.
 - [x] Stops on non-allowed installation failure.
 - [x] `allow_fail = true` warns and continues.
 
-**Known follow-up:**
+**Completed follow-up:**
 
-- [ ] Replace boolean installed check with `CheckResult` outcomes.
-- [ ] Track failure phase for diagnostics.
+- [x] Replace boolean installed check with `CheckResult` outcomes.
+- [x] Track failure phase for diagnostics.
 
 **Verification:**
 
@@ -226,7 +221,7 @@ Known divergences from current `SPEC.md`:
 
 ### Task 6: Basic command construction for real managers
 
-**Status:** Done, needs SPEC-alignment refactor in Phase 5
+**Status:** Done; SPEC-alignment refactor completed in Phase 5
 
 **Acceptance criteria completed:**
 
@@ -234,11 +229,11 @@ Known divergences from current `SPEC.md`:
 - [x] Rustup install command supports components, targets, and `set_default` follow-up.
 - [x] Commands are unit-tested without executing package managers.
 
-**Known follow-up:**
+**Completed follow-up:**
 
-- [ ] Remove binary-existence-only checks.
-- [ ] Add manager-specific metadata checks.
-- [ ] Add check-error behavior and tests.
+- [x] Remove binary-existence-only checks.
+- [x] Add manager-specific metadata checks.
+- [x] Add check-error behavior and tests.
 
 **Verification:**
 
@@ -265,16 +260,16 @@ Known divergences from current `SPEC.md`:
 
 **Acceptance criteria:**
 
-- [ ] Introduce `CheckResult` enum or equivalent with `satisfied`, `not_satisfied`, and `check_error` outcomes.
-- [ ] Manager protocol changes from `is_installed() -> bool` to `check(item) -> CheckResult`.
-- [ ] Executor treats `satisfied` as skip/success.
-- [ ] Executor treats `not_satisfied` as install.
-- [ ] Executor treats `check_error` as installation failure for that tool (does NOT fall back to install).
-- [ ] `force = true` bypasses checks and attempts installation.
-- [ ] Non-check-capable managers have `check` return `not_satisfied` (or skip check entirely) and always install when reached.
-- [ ] `github-release` check capability becomes conditional: check-capable only when `version_probe` is defined.
-- [ ] `cargo-binstall` becomes non-check-capable.
-- [ ] Existing tests are migrated away from boolean `is_installed`.
+- [x] Introduce `CheckResult` enum or equivalent with `satisfied`, `not_satisfied`, and `check_error` outcomes.
+- [x] Manager protocol changes from `is_installed() -> bool` to `check(item) -> CheckResult`.
+- [x] Executor treats `satisfied` as skip/success.
+- [x] Executor treats `not_satisfied` as install.
+- [x] Executor treats `check_error` as installation failure for that tool (does NOT fall back to install).
+- [x] `force = true` bypasses checks and attempts installation.
+- [x] Non-check-capable managers have `check` return `not_satisfied` (or skip check entirely) and always install when reached.
+- [x] `github-release` check capability becomes conditional: check-capable only when `version_probe` is defined.
+- [x] `cargo-binstall` becomes non-check-capable.
+- [x] Existing tests are migrated away from boolean `is_installed`.
 
 **Verification:**
 
@@ -302,13 +297,13 @@ Known divergences from current `SPEC.md`:
 
 **Acceptance criteria:**
 
-- [ ] Warnings identify tool name, selected manager, failure phase (`check` or `install`), and the available failure reason/status.
-- [ ] Exact wording remains human-facing and not machine-stable.
-- [ ] Non-allowed failures still stop execution and return non-zero through CLI.
+- [x] Warnings identify tool name, selected manager, failure phase (`check` or `install`), and the available failure reason/status.
+- [x] Exact wording remains human-facing and not machine-stable.
+- [x] Non-allowed failures still stop execution and return non-zero through CLI.
 
 **Verification:**
 
-- [ ] `python3 -m pytest tests/test_executor_managers.py tests/test_cli_integration.py`
+- [x] `python3 -m pytest tests/test_executor_managers.py tests/test_cli_integration.py`
 
 **Dependencies:** Task 7
 
@@ -334,25 +329,25 @@ Known divergences from current `SPEC.md`:
 
 ### Task 9: Validate `github-release.version_probe`
 
-**Status:** Not started
+**Status:** Done
 
 **Description:** Add strategy validation for the `version_probe` subtable and preserve it in merged strategy fields.
 
 **Acceptance criteria:**
 
-- [ ] `version_probe` is added to `github-release` optional fields in `_SUPPORTED`.
-- [ ] `version_probe` is allowed only for `github-release` manager (not for other managers in v1).
-- [ ] `version_probe.command` is validated as a non-empty array of non-empty strings.
-- [ ] `version_probe.command` strings are validated to use only `{bin}` placeholder.
-- [ ] `version_probe.regex` is validated as a compilable regex with a named capture group `version`.
-- [ ] Unknown `version_probe` fields are fatal.
-- [ ] `bin` default is set to the parsed logical tool name when omitted for managers that support it.
-- [ ] Dry-run does not execute probes.
+- [x] `version_probe` is added to `github-release` optional fields in `_SUPPORTED`.
+- [x] `version_probe` is allowed only for `github-release` manager (not for other managers in v1).
+- [x] `version_probe.command` is validated as a non-empty array of non-empty strings.
+- [x] `version_probe.command` strings are validated to use only `{bin}` placeholder.
+- [x] `version_probe.regex` is validated as a compilable regex with a named capture group `version`.
+- [x] Unknown `version_probe` fields are fatal.
+- [x] `bin` default is set to the parsed logical tool name when omitted for managers that support it.
+- [x] Dry-run does not execute probes.
 
 **Verification:**
 
-- [ ] `python3 -m pytest tests/test_parser_resolver_strategy.py`
-- [ ] `python3 -m pytest`
+- [x] `python3 -m pytest tests/test_parser_resolver_strategy.py`
+- [x] `python3 -m pytest`
 
 **Dependencies:** Task 7
 
@@ -367,24 +362,24 @@ Known divergences from current `SPEC.md`:
 
 ### Task 10: Harden `github-release` archive extraction
 
-**Status:** Not started
+**Status:** Done
 
 **Description:** Replace unsafe archive extraction with fail-closed containment checks.
 
 **Acceptance criteria:**
 
-- [ ] Archives are extracted only into a temporary staging directory.
-- [ ] Absolute archive entry paths are contained before writing (not written outside staging).
-- [ ] Parent-directory traversal entries cannot write outside staging.
-- [ ] Symlink entries cannot make requested `bin` resolve outside extracted contents.
-- [ ] If containment cannot be enforced, installation fails and existing executable is not replaced.
-- [ ] `.zip`, `.tar.gz`, `.tgz`, `.tar.xz`, and single-file asset behavior remains covered.
-- [ ] Download → verify checksum → locate bin → install is fail-closed (existing executable not replaced until all steps succeed).
+- [x] Archives are extracted only into a temporary staging directory.
+- [x] Absolute archive entry paths are contained before writing (not written outside staging).
+- [x] Parent-directory traversal entries cannot write outside staging.
+- [x] Symlink entries cannot make requested `bin` resolve outside extracted contents.
+- [x] If containment cannot be enforced, installation fails and existing executable is not replaced.
+- [x] `.zip`, `.tar.gz`, `.tgz`, `.tar.xz`, and single-file asset behavior remains covered.
+- [x] Download → verify checksum → locate bin → install is fail-closed (existing executable not replaced until all steps succeed).
 
 **Verification:**
 
-- [ ] `python3 -m pytest tests/test_manager_github_release.py`
-- [ ] `python3 -m pytest`
+- [x] `python3 -m pytest tests/test_manager_github_release.py`
+- [x] `python3 -m pytest`
 
 **Dependencies:** Task 9
 
@@ -397,22 +392,22 @@ Known divergences from current `SPEC.md`:
 
 ### Task 11: Confirm script manager execution contract
 
-**Status:** Not started
+**Status:** Done
 
 **Description:** Add focused tests for script-manager path containment, direct exec, environment variables, no positional args, and no check support.
 
 **Acceptance criteria:**
 
-- [ ] Script path is relative to manifest directory and cannot escape it.
-- [ ] Script is executed directly (execve), not through shell.
-- [ ] Required `TOOL_INSTALLER_*` environment variables are provided.
-- [ ] No tool-installer-defined positional args are passed.
-- [ ] Script manager is not check-capable (`check` returns `not_satisfied`).
-- [ ] Non-zero script exit is installation failure subject to `allow_fail`.
+- [x] Script path is relative to manifest directory and cannot escape it.
+- [x] Script is executed directly (execve), not through shell.
+- [x] Required `TOOL_INSTALLER_*` environment variables are provided.
+- [x] No tool-installer-defined positional args are passed.
+- [x] Script manager is not check-capable (`check` returns `not_satisfied`).
+- [x] Non-zero script exit is installation failure subject to `allow_fail`.
 
 **Verification:**
 
-- [ ] `python3 -m pytest tests/test_manager_script.py tests/test_executor_managers.py`
+- [x] `python3 -m pytest tests/test_manager_script.py tests/test_executor_managers.py`
 
 **Dependencies:** Task 7
 
@@ -641,13 +636,13 @@ Known divergences from current `SPEC.md`:
 
 - [x] Code does not use syntax unsupported by Python 3.8 (e.g., `list[str]` vs `List[str]`, `|` union syntax, `match` statements).
 - [x] Vendored `tomli` fallback imports and parses TOML under Python 3.8.
-- [x] Python 3.8 runtime unavailable locally; performed static syntax compatibility checks and full test suite on Python 3.12.
+- [x] Python 3.8 runtime verified in devbox container via `uv run --python 3.8`; full test suite passes.
 - [x] Any Python 3.8-incompatible type syntax is replaced.
 
 **Verification:**
 
-- [x] `python3.8 -m pytest` skipped: `python3.8` is not available in this container.
-- [x] Otherwise document that local Python 3.8 runtime is unavailable and run syntax/static compatibility checks feasible in this environment.
+- [x] `uv run --python 3.8 --with pytest python -m pytest -q` => `147 passed in 2.81s` (devbox container, Python 3.8.20).
+- [x] Syntax and static compatibility checks also pass on Python 3.12.
 
 **Dependencies:** Current codebase
 
@@ -702,7 +697,7 @@ Known divergences from current `SPEC.md`:
 | `github-release latest` requires external network during apply check | Medium | Keep dry-run network-free; surface network failures as `check_error` |
 | Cargo tracking can be disabled or incomplete | Medium | Treat absent/ambiguous tracking as `check_error`; keep cargo-binstall non-check-capable until verified |
 | `uv-tool latest` semantics are underdocumented | Medium | Keep `latest` non-check-capable in v1 |
-| Python 3.8 support may be broken by modern type syntax | Medium | Run Python 3.8 or static compatibility checks before v1 |
+| Python 3.8 support may be broken by modern type syntax | ~~Medium~~ Resolved | Verified: `147 passed` on Python 3.8.20 via `uv run --python 3.8` in devbox container |
 | Script manager executes trusted arbitrary code | Medium | Preserve path containment, direct exec, no shell expansion, and trust-model docs |
 
 ## Open Questions
@@ -727,3 +722,43 @@ When completing a task:
 2. Update **Current Progress** if a phase/checkpoint changes.
 3. Record the verification command and result.
 4. Keep `SPEC.md` as behavior source of truth; update `PLAN.md` only for implementation progress and Python-specific planning.
+---
+
+## Phase 8: Single-file Executable Distribution
+
+### Task 20: Build and verify compact single-file artifact
+
+**Status:** Done
+
+**Description:** Implement the `SPEC.md` distribution contract for a Python-based single-file executable that works on hosts with Python but without non-standard runtime packages.
+
+**Acceptance criteria:**
+
+- [x] A repository command builds one regular executable file at `dist/tool-installer`.
+- [x] A repository install script safely installs a downloaded artifact without replacing an existing destination until validation succeeds.
+- [x] The artifact uses an existing host Python interpreter and does not embed CPython.
+- [x] The artifact includes all runtime Python code, including the vendored TOML parser fallback.
+- [x] The artifact does not require installing runtime packages from PyPI on the target host.
+- [x] The artifact exposes the same CLI behavior as the packaged `tool-installer` command.
+- [x] The artifact is verified to be at most 409,600 bytes.
+- [x] Verification covers executable permission, `--help`, and `examples/` dry-run behavior.
+- [x] Verification covers safe install success and invalid-download failure preserving an existing destination.
+- [x] Distribution documentation is present in `README.md`.
+
+**Verification:**
+
+- [x] `scripts/build-single`
+- [x] `python3 -m pytest tests/test_distribution.py`
+- [x] `python3 -m pytest`
+
+**Files touched:**
+
+- `scripts/build-single`
+- `scripts/install-single`
+- `tests/test_distribution.py`
+- `.gitignore`
+- `README.md`
+- `SPEC.md`
+- `PLAN.md`
+
+**Scope:** Medium

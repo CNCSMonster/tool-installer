@@ -165,7 +165,7 @@ class GithubReleaseManager:
             downloaded = temp_dir / asset_name
             self._download_asset(repo, download_path, downloaded)
             self._verify_checksum(item, downloaded)
-            executable = self._locate_executable(item, downloaded, temp_dir)
+            executable = self._locate_executable(item, downloaded, temp_dir, version)
 
             install_dir = Path(home) / ".local" / "bin"
             install_dir.mkdir(parents=True, exist_ok=True)
@@ -270,8 +270,14 @@ class GithubReleaseManager:
         if digest.lower() != expected.lower():
             raise InstallationError(f"Checksum mismatch for {item.tool.reference.name}")
 
-    def _locate_executable(self, item: PlanItem, asset: Path, temp_dir: Path) -> Path:
-        bin_path = Path(item.strategy.fields["bin"])
+    def _locate_executable(self, item: PlanItem, asset: Path, temp_dir: Path, version: str = "") -> Path:
+        bin_template = item.strategy.fields["bin"]
+        bin_path = Path(bin_template.format(
+            tool=item.tool.reference.name,
+            version=version,
+            os=item.environment.os,
+            arch=item.environment.arch,
+        ))
         extract_dir = temp_dir / "extract"
         extract_dir.mkdir(parents=True, exist_ok=True)
 

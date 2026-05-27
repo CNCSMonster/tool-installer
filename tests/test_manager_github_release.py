@@ -51,9 +51,10 @@ regex = "^fd (?P<version>[0-9]+\\\\.[0-9]+\\\\.[0-9]+)"
 """,
     )
     config = parse_tools_file(tools, "dev")
+    manifest_data, _ = parse_manifest_file(manifest)
     plan = build_install_plan(
         collect_ordered_tools(resolve_modules(config, "dev")),
-        parse_manifest_file(manifest),
+        manifest_data,
         normalize_environment("Linux", "x86_64"),
         tmp_path,
     )
@@ -78,10 +79,11 @@ regex = "^fd (?P<version>.+)"
 """,
     )
     config = parse_tools_file(tools, "dev")
+    manifest_data, _ = parse_manifest_file(manifest)
     with pytest.raises(StrategyError, match="version_probe.command"):
         build_install_plan(
             collect_ordered_tools(resolve_modules(config, "dev")),
-            parse_manifest_file(manifest),
+            manifest_data,
             normalize_environment("Linux", "x86_64"),
             tmp_path,
         )
@@ -105,10 +107,11 @@ command = ["{bin}", "--version"]
 """,
     )
     config = parse_tools_file(tools, "dev")
+    manifest_data, _ = parse_manifest_file(manifest)
     with pytest.raises(StrategyError, match="version_probe.regex"):
         build_install_plan(
             collect_ordered_tools(resolve_modules(config, "dev")),
-            parse_manifest_file(manifest),
+            manifest_data,
             normalize_environment("Linux", "x86_64"),
             tmp_path,
         )
@@ -133,10 +136,11 @@ regex = "[invalid("
 """,
     )
     config = parse_tools_file(tools, "dev")
+    manifest_data, _ = parse_manifest_file(manifest)
     with pytest.raises(StrategyError, match="not a valid regex"):
         build_install_plan(
             collect_ordered_tools(resolve_modules(config, "dev")),
-            parse_manifest_file(manifest),
+            manifest_data,
             normalize_environment("Linux", "x86_64"),
             tmp_path,
         )
@@ -161,10 +165,11 @@ regex = "^fd ([0-9]+)"
 """,
     )
     config = parse_tools_file(tools, "dev")
+    manifest_data, _ = parse_manifest_file(manifest)
     with pytest.raises(StrategyError, match="named capture group.*version"):
         build_install_plan(
             collect_ordered_tools(resolve_modules(config, "dev")),
-            parse_manifest_file(manifest),
+            manifest_data,
             normalize_environment("Linux", "x86_64"),
             tmp_path,
         )
@@ -189,10 +194,11 @@ regex = "^fd (?P<version>.+)"
 """,
     )
     config = parse_tools_file(tools, "dev")
+    manifest_data, _ = parse_manifest_file(manifest)
     with pytest.raises(StrategyError, match="only supports.*bin.*placeholder"):
         build_install_plan(
             collect_ordered_tools(resolve_modules(config, "dev")),
-            parse_manifest_file(manifest),
+            manifest_data,
             normalize_environment("Linux", "x86_64"),
             tmp_path,
         )
@@ -270,10 +276,11 @@ regex = "^fd (?P<version>.+)"
     script.chmod(script.stat().st_mode | stat.S_IXUSR)
 
     config = parse_tools_file(tools, "dev")
+    manifest_data, _ = parse_manifest_file(manifest)
     with pytest.raises(StrategyError, match="Unknown strategy fields"):
         build_install_plan(
             collect_ordered_tools(resolve_modules(config, "dev")),
-            parse_manifest_file(manifest),
+            manifest_data,
             normalize_environment("Linux", "x86_64"),
             tmp_path,
         )
@@ -300,10 +307,11 @@ extra_field = true
 """,
     )
     config = parse_tools_file(tools, "dev")
+    manifest_data, _ = parse_manifest_file(manifest)
     with pytest.raises(StrategyError, match="Unknown version_probe fields"):
         build_install_plan(
             collect_ordered_tools(resolve_modules(config, "dev")),
-            parse_manifest_file(manifest),
+            manifest_data,
             normalize_environment("Linux", "x86_64"),
             tmp_path,
         )

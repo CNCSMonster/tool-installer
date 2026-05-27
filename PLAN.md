@@ -16,15 +16,16 @@ Implement tool-installer as specified in `SPEC.md`: a Python 3.8+ declarative de
 - [x] Phase 6: Expand conformance tests and examples
 - [x] Phase 7: Python 3.8 packaging/runtime verification
 - [x] Phase 8: Single-file executable distribution
+- [x] Phase 9: Network configuration and GitHub mirror fallback
 
 Current test status:
 
 ```text
 python3 -m pytest
-145 passed
+163 passed
 ```
 
-Final Phase 5-7 verification: `python3 -m pytest` => `143 passed`; latest documentation-closeout verification: `python3 -m pytest -q` => `143 passed in 0.28s`. Single-file distribution verification: `scripts/build-single` => `dist/tool-installer` is 29,925 bytes and examples dry-run succeeds; safe install verification is covered by `tests/test_distribution.py`; latest full verification: `python3 -m pytest -q` => `145 passed`.
+Final Phase 5-7 verification: `python3 -m pytest` => `143 passed`; latest documentation-closeout verification: `python3 -m pytest -q` => `143 passed in 0.28s`. Single-file distribution verification: `scripts/build-single` => `dist/tool-installer` is 29,925 bytes and examples dry-run succeeds; safe install verification is covered by `tests/test_distribution.py`; latest full verification: `python3 -m pytest -q` => `145 passed`. Phase 9 verification: `python3 -m pytest -q` => `163 passed` (16 new network config tests).
 
 ## Architecture Decisions
 
@@ -760,5 +761,51 @@ When completing a task:
 - `README.md`
 - `SPEC.md`
 - `PLAN.md`
+
+**Scope:** Medium
+
+---
+
+## Phase 9: Network Configuration and GitHub Mirror Fallback
+
+### Task 21: Manifest `[_network]` section and mirror-aware downloads
+
+**Status:** Done
+
+**Description:** Add a reserved `[_network]` manifest section for global network configuration, and implement mirror fallback with retry/timeout for `github-release` downloads.
+
+**Acceptance criteria:**
+
+- [x] `[_network]` is a reserved manifest section (underscore prefix) that is not treated as a tool name.
+- [x] `[_network].github_mirrors` is an ordered list of mirror base URLs.
+- [x] `[_network].timeout` sets HTTP request timeout in seconds (default 30).
+- [x] `[_network].retry` sets retry count per request (default 3).
+- [x] `github-release` downloads try mirrors in order, then fall back to direct GitHub URL.
+- [x] Each URL attempt retries with exponential backoff before moving to the next mirror.
+- [x] `_latest_tag()` API calls respect timeout and retry settings.
+- [x] Other managers are not affected by `[_network]`.
+- [x] Unknown `[_network]` fields are fatal manifest errors.
+- [x] Missing `[_network]` uses defaults (no mirrors, 30s timeout, 3 retries).
+- [x] `NetworkConfig` flows from manifest → parser → cli → registry → GithubReleaseManager.
+
+**Verification:**
+
+- [x] `python3 -m pytest tests/test_network_config.py` => `16 passed`.
+- [x] `python3 -m pytest -q` => `163 passed`.
+- [x] `examples/dotfiles/` dry-run succeeds.
+
+**Files touched:**
+
+- `src/tool_installer/models.py`
+- `src/tool_installer/parser.py`
+- `src/tool_installer/cli.py`
+- `src/tool_installer/managers/__init__.py`
+- `src/tool_installer/managers/github_release.py`
+- `SPEC.md`
+- `README.md`
+- `PLAN.md`
+- `tests/test_network_config.py`
+- `examples/dotfiles/tools.toml`
+- `examples/dotfiles/manifest.toml`
 
 **Scope:** Medium

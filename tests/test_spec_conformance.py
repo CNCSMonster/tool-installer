@@ -41,9 +41,10 @@ pkg = "curl"
 """,
     )
     config = parse_tools_file(tools, "dev")
+    manifest_data, _ = parse_manifest_file(manifest)
     plan = build_install_plan(
         collect_ordered_tools(resolve_modules(config, "dev")),
-        parse_manifest_file(manifest),
+        manifest_data,
         normalize_environment("Linux", "x86_64"),
         tmp_path,
     )
@@ -160,10 +161,11 @@ manager = "unsupported-manager"
 """,
     )
     config = parse_tools_file(tools, "dev")
+    manifest_data, _ = parse_manifest_file(manifest)
     with pytest.raises(StrategyError):
         build_install_plan(
             collect_ordered_tools(resolve_modules(config, "dev")),
-            parse_manifest_file(manifest),
+            manifest_data,
             normalize_environment("Linux", "x86_64"),
             tmp_path,
         )
@@ -204,9 +206,10 @@ pkg = "fd-find"
 """,
     )
     config = parse_tools_file(tools, "dev")
+    manifest_data, _ = parse_manifest_file(manifest)
     plan = build_install_plan(
         collect_ordered_tools(resolve_modules(config, "dev")),
-        parse_manifest_file(manifest),
+        manifest_data,
         normalize_environment("Linux", "x86_64"),
         tmp_path,
     )
@@ -304,10 +307,11 @@ def test_fatal_strategy_error_occurs_before_installation(tmp_path: Path) -> None
     write(tools, "[tool-installer]\nmanifest = 'manifest.toml'\n[dev]\n'tool@1.0.0' = ''\n")
     write(manifest, "[tool]\n[tool.linux]\nmanager = 'brew'\npkg = 'git'\n")
     config = parse_tools_file(tools, "dev")
+    manifest_data, _ = parse_manifest_file(manifest)
     with pytest.raises(StrategyError):
         build_install_plan(
             collect_ordered_tools(resolve_modules(config, "dev")),
-            parse_manifest_file(manifest),
+            manifest_data,
             normalize_environment("Linux", "x86_64"),
             tmp_path,
         )

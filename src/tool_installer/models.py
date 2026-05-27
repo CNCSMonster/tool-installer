@@ -44,6 +44,15 @@ class ToolsConfig:
 
 
 @dataclass(frozen=True)
+class NetworkConfig:
+    """Global network configuration from manifest [_network] section."""
+
+    github_mirrors: List[str] = field(default_factory=list)
+    timeout: float = 30.0
+    retry: int = 3
+
+
+@dataclass(frozen=True)
 class Environment:
     """Normalized execution environment."""
 

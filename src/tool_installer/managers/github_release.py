@@ -11,13 +11,15 @@ import stat
 import subprocess
 import tarfile
 import tempfile
+import time
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from ..errors import InstallationError
-from ..models import PlanItem
+from ..models import NetworkConfig, PlanItem
 from .base import CheckResult, Manager
 
 
@@ -35,7 +37,12 @@ class GithubReleaseManager:
 
     Check-capable only when version_probe is defined in the strategy.
     Without version_probe, always returns NOT_SATISFIED (non-check-capable).
+
+    Supports mirror fallback and retry/timeout via NetworkConfig.
     """
+
+    def __init__(self, network_config: Optional[NetworkConfig] = None) -> None:
+        self._net = network_config or NetworkConfig()
 
     def check(self, item: PlanItem) -> CheckResult:
         version_probe = item.strategy.fields.get("version_probe")
@@ -111,10 +118,10 @@ class GithubReleaseManager:
             return CheckResult.SATISFIED
         return CheckResult.NOT_SATISFIED
 
-    @staticmethod
-    def _latest_tag(repo: str) -> str:
-        with urllib.request.urlopen(f"https://api.github.com/repos/{repo}/releases/latest") as response:
-            data = json.loads(response.read().decode("utf-8"))
+    def _latest_tag(self, repo: str) -> str:
+        api_url = f"https://api.github.com/repos/{repo}/releases/latest"
+        response = self._fetch_url(api_url, is_api=True)
+        data = json.loads(response.read().decode("utf-8"))
         tag = data.get("tag_name")
         if not isinstance(tag, str) or not tag:
             raise InstallationError(f"Could not resolve latest GitHub release for {repo}")
@@ -130,12 +137,13 @@ class GithubReleaseManager:
             version = self._latest_tag(item.strategy.fields["repo"])
 
         asset_name = self._asset_name(item, version)
-        url = f"https://github.com/{item.strategy.fields['repo']}/releases/download/{version}/{asset_name}"
+        repo = item.strategy.fields["repo"]
+        download_path = f"releases/download/{version}/{asset_name}"
 
         with tempfile.TemporaryDirectory() as temp:
             temp_dir = Path(temp)
             downloaded = temp_dir / asset_name
-            urllib.request.urlretrieve(url, downloaded)
+            self._download_asset(repo, download_path, downloaded)
             self._verify_checksum(item, downloaded)
             executable = self._locate_executable(item, downloaded, temp_dir)
 
@@ -157,6 +165,49 @@ class GithubReleaseManager:
                 except OSError:
                     pass
                 raise
+
+    def _build_download_urls(self, repo: str, path: str) -> List[str]:
+        """Build a list of URLs to try: mirrors first, then direct GitHub."""
+        urls: List[str] = []
+        for mirror in self._net.github_mirrors:
+            urls.append(f"{mirror}/https://github.com/{repo}/{path}")
+        urls.append(f"https://github.com/{repo}/{path}")
+        return urls
+
+    def _download_asset(self, repo: str, path: str, dest: Path) -> None:
+        """Download a GitHub release asset with mirror fallback and retry."""
+        urls = self._build_download_urls(repo, path)
+        last_error: Optional[Exception] = None
+        for url in urls:
+            for attempt in range(self._net.retry + 1):
+                try:
+                    req = urllib.request.Request(url)
+                    with urllib.request.urlopen(req, timeout=self._net.timeout) as response:
+                        dest.write_bytes(response.read())
+                    return
+                except (urllib.error.URLError, OSError, TimeoutError) as exc:
+                    last_error = exc
+                    if attempt < self._net.retry:
+                        time.sleep(min(2 ** attempt, 8))
+            # This URL failed all retries; try next mirror
+        raise InstallationError(
+            f"Failed to download {repo}/{path} after trying all mirrors and direct: {last_error}"
+        )
+
+    def _fetch_url(self, url: str, is_api: bool = False) -> object:
+        """Fetch a URL with retry and timeout. No mirror fallback for API calls."""
+        last_error: Optional[Exception] = None
+        for attempt in range(self._net.retry + 1):
+            try:
+                req = urllib.request.Request(url)
+                if is_api:
+                    req.add_header("Accept", "application/vnd.github.v3+json")
+                return urllib.request.urlopen(req, timeout=self._net.timeout)
+            except (urllib.error.URLError, OSError, TimeoutError) as exc:
+                last_error = exc
+                if attempt < self._net.retry:
+                    time.sleep(min(2 ** attempt, 8))
+        raise InstallationError(f"Failed to fetch {url}: {last_error}")
 
     def _asset_name(self, item: PlanItem, version: str) -> str:
         return item.strategy.fields["asset"].format(

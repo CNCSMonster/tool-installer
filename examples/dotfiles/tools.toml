@@ -1,0 +1,38 @@
+# tool-installer dotfiles example
+# Demonstrates a realistic development environment setup with
+# network-aware GitHub release downloads via [_network].
+
+[tool-installer]
+manifest = "./manifest.toml"
+
+# Base tools: languages and runtimes
+[base]
+python = "Python via mise"
+node = "Node.js via mise"
+go = "Go via mise"
+rust = "Stable Rust toolchain"
+
+# Editors and terminal tools
+[editors]
+depends = ["base"]
+neovim = "Neovim editor"
+helix = "Helix editor"
+zellij = "Terminal multiplexer"
+
+# CLI tools
+[cli]
+depends = ["base"]
+bat = "Cat with syntax highlighting"
+ripgrep = "Fast grep replacement"
+fd = "Fast find replacement"
+yazi = "Terminal file manager"
+
+# Rust development extras
+[rust-dev]
+depends = ["base"]
+sccache = { desc = "Shared compilation cache", allow_fail = true }
+taplo = { desc = "TOML formatter/LSP", allow_fail = true }
+
+# Full setup: everything
+[dev]
+depends = ["editors", "cli", "rust-dev"]

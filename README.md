@@ -66,6 +66,27 @@ command = ["{bin}", "--version"]
 regex = "^fd (?P<version>[0-9]+\.[0-9]+\.[0-9]+)"
 ```
 
+## Network configuration
+
+The manifest supports a `[_network]` reserved section for configuring GitHub download behavior.
+This is useful when GitHub is slow or unreachable (e.g., behind a firewall).
+
+```toml
+[_network]
+github_mirrors = [
+    "https://mirror.ghproxy.com",
+    "https://ghfast.top",
+]
+timeout = 60
+retry = 3
+```
+
+Mirrors are tried in order. If a mirror fails all retries, the next one is tried.
+If all mirrors fail, the direct GitHub URL is tried. If that also fails, the tool fails.
+
+Other managers (`apt`, `cargo`, `npm`, `mise`, etc.) use their own native mirror configuration.
+See `examples/dotfiles/` for a complete development-environment setup with network configuration.
+
 
 ## Single-file executable
 

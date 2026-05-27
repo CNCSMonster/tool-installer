@@ -139,9 +139,10 @@ force = true
     )
 
     config = parse_tools_file(tools, "dev")
+    manifest_data, _ = parse_manifest_file(manifest)
     plan = build_install_plan(
         collect_ordered_tools(resolve_modules(config, "dev")),
-        parse_manifest_file(manifest),
+        manifest_data,
         normalize_environment("Linux", "x86_64"),
         tmp_path,
     )
@@ -159,11 +160,12 @@ def test_strategy_rejects_unsupported_and_manager_specific_errors(tmp_path: Path
     write(tools, "[tool-installer]\nmanifest = 'manifest.toml'\n[dev]\n'brewtool@1' = ''\n")
     write(manifest, "[brewtool]\n[brewtool.linux]\nmanager = 'brew'\npkg = 'brewtool'\n")
     config = parse_tools_file(tools, "dev")
+    manifest_data, _ = parse_manifest_file(manifest)
 
     with pytest.raises(StrategyError):
         build_install_plan(
             collect_ordered_tools(resolve_modules(config, "dev")),
-            parse_manifest_file(manifest),
+            manifest_data,
             normalize_environment("Linux", "x86_64"),
             tmp_path,
         )

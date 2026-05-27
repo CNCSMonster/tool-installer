@@ -233,6 +233,26 @@ Only tools in the selected installation scope require complete manifest strategy
 
 The `platforms` field is not part of the supported manifest schema. Platform support is expressed only through OS/Arch strategy tables.
 
+## Reserved Manifest Sections
+
+Top-level manifest keys that begin with `_` (underscore) are reserved sections and are not interpreted as tool names.
+
+### `[_network]`
+
+The `[_network]` section configures global network behavior. It is optional. If absent, default network settings apply.
+
+| Field | Type | Required | Default | Meaning |
+|---|---|---:|---|---|
+| `github_mirrors` | array of strings | no | `[]` | Ordered list of mirror base URLs for `github-release` downloads |
+| `timeout` | number (seconds) | no | `30` | HTTP request timeout for `github-release` operations |
+| `retry` | integer | no | `3` | Number of retries per HTTP request attempt |
+
+`github_mirrors` entries must be non-empty strings. Trailing slashes are stripped. The mirror URL is prepended to the full GitHub download URL path (e.g., `mirror_url/https://github.com/owner/repo/releases/...`).
+
+For `github-release` downloads, tool-installer tries each mirror in order. If a mirror fails all retry attempts, the next mirror is tried. If all mirrors fail, the direct GitHub URL is tried with the same retry policy. If all attempts fail, the installation fails for that tool.
+
+Other managers (`apt`, `cargo`, `npm`, etc.) manage their own network configuration through their native mechanisms (e.g., `sources.list`, `cargo/config.toml`, `.npmrc`). Tool-installer does not override those configurations.
+
 ## Environment Names
 
 Manifest OS names are:

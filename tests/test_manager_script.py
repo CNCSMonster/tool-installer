@@ -53,10 +53,11 @@ path = "../escape.sh"
 """,
     )
     config = parse_tools_file(tools, "dev")
+    manifest_data, _ = parse_manifest_file(manifest)
     with pytest.raises(StrategyError, match="safe relative path"):
         build_install_plan(
             collect_ordered_tools(resolve_modules(config, "dev")),
-            parse_manifest_file(manifest),
+            manifest_data,
             normalize_environment("Linux", "x86_64"),
             tmp_path,
         )

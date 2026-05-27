@@ -137,17 +137,21 @@ def test_build_download_urls_with_mirrors() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _make_mock_response(data: bytes) -> MagicMock:
+    """Create a mock HTTP response that supports chunked read()."""
+    resp = MagicMock()
+    resp.__enter__ = MagicMock(return_value=resp)
+    resp.__exit__ = MagicMock(return_value=False)
+    resp.read.side_effect = [data, b""]
+    return resp
+
+
 def test_download_uses_first_mirror_on_success(tmp_path: Path) -> None:
     net = NetworkConfig(github_mirrors=["https://mirror.ok"], timeout=5, retry=0)
     mgr = GithubReleaseManager(net)
 
-    fake_response = MagicMock()
-    fake_response.read.return_value = b"binary-data"
-    fake_response.__enter__ = MagicMock(return_value=fake_response)
-    fake_response.__exit__ = MagicMock(return_value=False)
-
     dest = tmp_path / "asset"
-    with patch("urllib.request.urlopen", return_value=fake_response) as mock_open:
+    with patch("urllib.request.urlopen", return_value=_make_mock_response(b"binary-data")) as mock_open:
         mgr._download_asset("owner/repo", "releases/download/v1.0/f.tar.gz", dest)
 
     req = mock_open.call_args[0][0]
@@ -160,11 +164,6 @@ def test_download_falls_back_to_direct_after_mirror_fails(tmp_path: Path) -> Non
     net = NetworkConfig(github_mirrors=["https://mirror.bad"], timeout=1, retry=0)
     mgr = GithubReleaseManager(net)
 
-    success_response = MagicMock()
-    success_response.read.return_value = b"ok-data"
-    success_response.__enter__ = MagicMock(return_value=success_response)
-    success_response.__exit__ = MagicMock(return_value=False)
-
     dest = tmp_path / "asset"
     call_urls = []
 
@@ -173,7 +172,7 @@ def test_download_falls_back_to_direct_after_mirror_fails(tmp_path: Path) -> Non
         call_urls.append(url)
         if "mirror.bad" in str(url):
             raise urllib.error.URLError("mirror down")
-        return success_response
+        return _make_mock_response(b"ok-data")
 
     with patch("urllib.request.urlopen", side_effect=mock_urlopen):
         mgr._download_asset("owner/repo", "releases/download/v1.0/f.tar.gz", dest)
@@ -188,11 +187,6 @@ def test_download_retries_on_transient_failure(tmp_path: Path) -> None:
     net = NetworkConfig(github_mirrors=[], timeout=1, retry=2)
     mgr = GithubReleaseManager(net)
 
-    success_response = MagicMock()
-    success_response.read.return_value = b"retry-ok"
-    success_response.__enter__ = MagicMock(return_value=success_response)
-    success_response.__exit__ = MagicMock(return_value=False)
-
     dest = tmp_path / "asset"
     attempt_count = [0]
 
@@ -200,7 +194,7 @@ def test_download_retries_on_transient_failure(tmp_path: Path) -> None:
         attempt_count[0] += 1
         if attempt_count[0] < 3:
             raise urllib.error.URLError("transient")
-        return success_response
+        return _make_mock_response(b"retry-ok")
 
     with patch("urllib.request.urlopen", side_effect=mock_urlopen):
         with patch("time.sleep"):

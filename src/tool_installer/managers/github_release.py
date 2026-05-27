@@ -183,7 +183,18 @@ class GithubReleaseManager:
                 try:
                     req = urllib.request.Request(url)
                     with urllib.request.urlopen(req, timeout=self._net.timeout) as response:
-                        dest.write_bytes(response.read())
+                        # Read in chunks with total timeout to avoid hanging on slow transfers
+                        deadline = time.monotonic() + self._net.timeout * 3
+                        chunks: List[bytes] = []
+                        while True:
+                            remaining = deadline - time.monotonic()
+                            if remaining <= 0:
+                                raise TimeoutError("Download total timeout exceeded")
+                            chunk = response.read(65536)
+                            if not chunk:
+                                break
+                            chunks.append(chunk)
+                        dest.write_bytes(b"".join(chunks))
                     return
                 except (urllib.error.URLError, OSError, TimeoutError) as exc:
                     last_error = exc

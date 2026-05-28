@@ -374,7 +374,7 @@ A manifest strategy whose `manager` is not one of these names is a fatal strateg
 | `brew` | `pkg` | none | `latest` installs the current Homebrew formula; non-`latest` selectors are not supported in v1 and are fatal for this manager |
 | `brew-cask` | `pkg` | none | `latest` installs the current Homebrew cask; non-`latest` selectors are not supported in v1 and are fatal for this manager |
 | `cargo-binstall` | `pkg` | `bin` | `latest` installs the current crate release; a non-`latest` selector requests that crate version |
-| `cargo-install` | `pkg` | `bin`, `locked`, `git`, `tag`, `branch`, `rev` | Registry installs honor `latest` or an exact crate version; git installs use `tag`, `branch`, or `rev` and require the tool version selector to be `latest` |
+| `cargo-install` | `pkg` | `bin`, `locked`, `binstall_first`, `git`, `tag`, `branch`, `rev` | Registry installs honor `latest` or an exact crate version; when `binstall_first = true`, registry installs first try cargo-binstall prebuilt binaries and fall back to source compilation; git installs use `tag`, `branch`, or `rev` and require the tool version selector to be `latest` |
 | `mise` | `plugin` | none | Installs `<plugin>@<selector>`; `latest` is passed as the selector `latest` |
 | `npm-global` | `pkg` | `bin`, `registry` | Installs the global npm package for the requested selector; `latest` uses the package manager's latest/default dist-tag |
 | `pnpm-global` | `pkg` | `bin`, `registry` | Installs the global pnpm package for the requested selector; `latest` uses the package manager's latest/default dist-tag |
@@ -388,6 +388,8 @@ A manifest strategy whose `manager` is not one of these names is a fatal strateg
 `bin`, when supported by a package-like manager, names the executable used for installed-state checks. If omitted, it defaults to the parsed logical tool name.
 
 `locked`, when present for `cargo-install`, must be a boolean and requests locked dependency resolution for cargo installation.
+
+`binstall_first`, when present for `cargo-install`, must be a boolean and defaults to `false`. It is an install-time optimization for registry installs only. When true and the strategy is not a git install, tool-installer must ensure `cargo-binstall` is available by using an existing executable from `PATH` or `$CARGO_HOME/bin`/`~/.cargo/bin`, or by downloading the matching cargo-binstall release archive from `https://github.com/cargo-bins/cargo-binstall/releases/latest/download/` into the cargo bin directory. Bootstrap failures are non-fatal and must fall back to the normal `cargo install` command. The binstall attempt must run cargo-binstall with `-y --disable-strategies compile`, append `--version <selector>` for non-`latest` selectors, and fall back to the normal `cargo install` command if that attempt fails. `binstall_first` must not change installed-state check semantics.
 
 For `cargo-install`, `git`, `tag`, `branch`, and `rev` must be strings when present. `tag`, `branch`, and `rev` are mutually exclusive. `tag`, `branch`, and `rev` may be used only when `git` is present. If `git` is present and the tool version selector is not `latest`, the strategy is invalid because v1 does not define two independent version sources for a git cargo install.
 

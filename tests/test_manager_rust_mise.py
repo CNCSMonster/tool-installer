@@ -95,6 +95,60 @@ def test_cargo_install_command_git_rev() -> None:
     assert mgr.install_command(item("cargo-install", "tool", "latest", {"pkg": "tool", "git": "https://example/repo.git", "rev": "abc"})) == ["cargo", "install", "tool", "--git", "https://example/repo.git", "--rev", "abc"]
 
 
+def test_cargo_install_binstall_first_uses_binstall_then_skips_source(monkeypatch: Any) -> None:
+    monkeypatch.setattr("tool_installer.managers.commands.shutil.which", lambda name: "/usr/bin/cargo-binstall" if name == "cargo-binstall" else None)
+    mgr = CargoInstallManager(runner_multi([
+        {"stdout": "cargo-binstall 1.0.0", "returncode": 0},
+        {"returncode": 0},
+    ]))
+
+    mgr.install(item("cargo-install", "ripgrep", "14.1.0", {"pkg": "ripgrep", "binstall_first": True}))
+
+    assert mgr.runner.run.call_args_list[0].args[0] == ["cargo-binstall", "--version"]
+    assert mgr.runner.run.call_args_list[1].args[0] == ["cargo", "binstall", "-y", "--disable-strategies", "compile", "--version", "14.1.0", "ripgrep"]
+
+
+def test_cargo_install_binstall_first_falls_back_to_source(monkeypatch: Any) -> None:
+    monkeypatch.setattr("tool_installer.managers.commands.shutil.which", lambda name: "/usr/bin/cargo-binstall" if name == "cargo-binstall" else None)
+    mgr = CargoInstallManager(runner_multi([
+        {"stdout": "cargo-binstall 1.0.0", "returncode": 0},
+        {"returncode": 1},
+        {"returncode": 0},
+    ]))
+
+    mgr.install(item("cargo-install", "ripgrep", "latest", {"pkg": "ripgrep", "locked": True, "binstall_first": True}))
+
+    assert mgr.runner.run.call_args_list[1].args[0] == ["cargo", "binstall", "-y", "--disable-strategies", "compile", "ripgrep"]
+    assert mgr.runner.run.call_args_list[2].args[0] == ["cargo", "install", "ripgrep", "--locked"]
+
+
+def test_cargo_install_binstall_first_ignored_for_git(monkeypatch: Any) -> None:
+    monkeypatch.setattr("tool_installer.managers.commands.shutil.which", lambda name: "/usr/bin/cargo-binstall")
+    mgr = CargoInstallManager(runner_multi([{"returncode": 0}]))
+
+    mgr.install(item("cargo-install", "tool", "latest", {"pkg": "tool", "git": "https://example/repo.git", "binstall_first": True}))
+
+    assert mgr.runner.run.call_args_list[0].args[0] == ["cargo", "install", "tool", "--git", "https://example/repo.git"]
+
+
+def test_cargo_install_binstall_first_existing_home_binary(monkeypatch: Any, tmp_path: Any) -> None:
+    monkeypatch.setattr("tool_installer.managers.commands.shutil.which", lambda name: None)
+    monkeypatch.setenv("CARGO_HOME", str(tmp_path))
+    binary = tmp_path / "bin" / "cargo-binstall"
+    binary.parent.mkdir()
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(0o755)
+    mgr = CargoInstallManager(runner_multi([
+        {"stdout": "cargo-binstall 1.0.0", "returncode": 0},
+        {"returncode": 0},
+    ]))
+
+    mgr.install(item("cargo-install", "ripgrep", "latest", {"pkg": "ripgrep", "binstall_first": True}))
+
+    assert mgr.runner.run.call_args_list[0].args[0] == [str(binary), "--version"]
+    assert mgr.runner.run.call_args_list[1].args[0] == [str(binary), "-y", "--disable-strategies", "compile", "ripgrep"]
+
+
 # mise
 
 def test_mise_exact_satisfied_list_output() -> None:

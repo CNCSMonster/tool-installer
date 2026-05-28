@@ -18,7 +18,7 @@ _SUPPORTED: Dict[str, Dict[str, Any]] = {
     "brew": {"required": {"pkg"}, "optional": set(), "latest_only": True},
     "brew-cask": {"required": {"pkg"}, "optional": set(), "latest_only": True},
     "cargo-binstall": {"required": {"pkg"}, "optional": {"bin"}},
-    "cargo-install": {"required": {"pkg"}, "optional": {"bin", "locked", "git", "tag", "branch", "rev"}},
+    "cargo-install": {"required": {"pkg"}, "optional": {"bin", "locked", "binstall_first", "git", "tag", "branch", "rev"}},
     "rustup": {"required": set(), "optional": {"components", "targets", "profile", "set_default"}},
     "mise": {"required": {"plugin"}, "optional": set()},
     "npm-global": {"required": {"pkg"}, "optional": {"bin", "registry"}},
@@ -28,7 +28,7 @@ _SUPPORTED: Dict[str, Dict[str, Any]] = {
     "script": {"required": {"path"}, "optional": set()},
 }
 _STRING_FIELDS = {"manager", "pkg", "bin", "registry", "plugin", "python", "git", "tag", "branch", "rev", "profile", "repo", "asset", "sha256", "install_name", "path"}
-_BOOL_FIELDS = {"force", "locked", "set_default"}
+_BOOL_FIELDS = {"force", "locked", "binstall_first", "set_default"}
 _ARRAY_FIELDS = {"with", "components", "targets"}
 _NESTED_TABLE_FIELDS = {"version_probe"}
 _VERSION_PROBE_FIELDS = {"command", "regex"}

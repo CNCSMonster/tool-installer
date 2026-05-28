@@ -3,6 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import stat
+import tarfile
+import tempfile
+import urllib.error
+import urllib.request
+from pathlib import Path
 from typing import List, Optional
 
 from ..errors import InstallationError
@@ -243,7 +251,22 @@ class CargoInstallManager(CommandManager):
     """Cargo install manager.
 
     Check: uses cargo install --list for tracked packages.
+
+    When the opt-in ``binstall_first`` strategy field is true for a
+    registry install, installation first tries cargo-binstall without its
+    compile strategy and falls back to the normal cargo install command on
+    any binstall/bootstrap failure.
     """
+
+    _BINSTALL_RELEASE_BASE = (
+        "https://github.com/cargo-bins/cargo-binstall/releases/latest/download"
+    )
+    _BINSTALL_TARGETS = {
+        ("linux", "x86_64"): "x86_64-unknown-linux-musl",
+        ("linux", "aarch64"): "aarch64-unknown-linux-musl",
+        ("macos", "x86_64"): "x86_64-apple-darwin",
+        ("macos", "aarch64"): "aarch64-apple-darwin",
+    }
 
     def check(self, item: PlanItem) -> CheckResult:
         pkg = item.strategy.fields["pkg"]
@@ -321,6 +344,28 @@ class CargoInstallManager(CommandManager):
         raise NotImplementedError("Use check() instead")
 
     def install_command(self, item: PlanItem) -> List[str]:
+        """Return the normal cargo install command.
+
+        ``binstall_first`` is intentionally implemented in ``install()`` so
+        callers that inspect the command still see the deterministic source
+        build fallback command.
+        """
+        return self._cargo_install_command(item)
+
+    def install(self, item: PlanItem) -> None:
+        fields = item.strategy.fields
+        if fields.get("binstall_first") is True and "git" not in fields:
+            binstall = self._ensure_binstall(item)
+            if binstall is not None:
+                result = self.runner.run(self._binstall_command(item, binstall), check=False)
+                if result.returncode == 0:
+                    return
+
+        result = self.runner.run(self._cargo_install_command(item), check=False)
+        if result.returncode != 0:
+            raise InstallationError(f"Install failed for {item.tool.reference.name} with manager {item.strategy.manager}")
+
+    def _cargo_install_command(self, item: PlanItem) -> List[str]:
         fields = item.strategy.fields
         command = ["cargo", "install", fields["pkg"]]
         if fields.get("locked") is True:
@@ -333,6 +378,93 @@ class CargoInstallManager(CommandManager):
         elif _selector(item) != "latest":
             command.extend(["--version", _selector(item)])
         return command
+
+    def _binstall_command(self, item: PlanItem, invocation: List[str]) -> List[str]:
+        command = list(invocation) + ["-y", "--disable-strategies", "compile"]
+        if _selector(item) != "latest":
+            command.extend(["--version", _selector(item)])
+        command.append(item.strategy.fields["pkg"])
+        return command
+
+    def _ensure_binstall(self, item: PlanItem) -> Optional[List[str]]:
+        """Return a cargo-binstall invocation, or None when unavailable.
+
+        All bootstrap failures are intentionally non-fatal so
+        ``binstall_first`` remains an optimization over the normal
+        ``cargo install`` path rather than a new hard dependency.
+        """
+        if shutil.which("cargo-binstall") and self._verified_binstall("cargo-binstall"):
+            return ["cargo", "binstall"]
+
+        home_binary = self._cargo_home_bin() / "cargo-binstall"
+        if home_binary.is_file() and os.access(home_binary, os.X_OK):
+            if self._verified_binstall(str(home_binary)):
+                return [str(home_binary)]
+            return None
+
+        if not self._download_binstall(item, home_binary):
+            return None
+        if self._verified_binstall(str(home_binary)):
+            return [str(home_binary)]
+        return None
+
+    def _verified_binstall(self, binary: str) -> bool:
+        try:
+            result = self.runner.run([binary, "--version"], check=False, capture_output=True, text=True)
+        except OSError:
+            return False
+        return result.returncode == 0
+
+    def _cargo_home_bin(self) -> Path:
+        cargo_home = os.environ.get("CARGO_HOME")
+        if cargo_home:
+            return Path(cargo_home) / "bin"
+        home = os.environ.get("HOME")
+        if home:
+            return Path(home) / ".cargo" / "bin"
+        return Path.home() / ".cargo" / "bin"
+
+    def _download_binstall(self, item: PlanItem, destination: Path) -> bool:
+        target = self._BINSTALL_TARGETS.get((item.environment.os, item.environment.arch))
+        if target is None:
+            return False
+        asset = f"cargo-binstall-{target}.tgz"
+        url = f"{self._BINSTALL_RELEASE_BASE}/{asset}"
+
+        try:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory() as temp:
+                archive = Path(temp) / asset
+                with urllib.request.urlopen(url, timeout=30) as response:
+                    archive.write_bytes(response.read())
+                executable = self._extract_binstall(archive, Path(temp))
+                temp_dest = destination.parent / f".{destination.name}.installing"
+                shutil.copy2(executable, temp_dest)
+                temp_dest.chmod(temp_dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+                os.replace(str(temp_dest), str(destination))
+            return True
+        except (OSError, tarfile.TarError, urllib.error.URLError, TimeoutError):
+            try:
+                temp_dest = destination.parent / f".{destination.name}.installing"
+                temp_dest.unlink()
+            except OSError:
+                pass
+            return False
+
+    def _extract_binstall(self, archive: Path, temp_dir: Path) -> Path:
+        with tarfile.open(archive, "r:gz") as tar:
+            for member in tar.getmembers():
+                name = Path(member.name).name
+                if name == "cargo-binstall" and member.isfile():
+                    extracted = temp_dir / "cargo-binstall.extracted"
+                    source = tar.extractfile(member)
+                    if source is None:
+                        break
+                    with source, extracted.open("wb") as dest:
+                        shutil.copyfileobj(source, dest)
+                    extracted.chmod(extracted.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+                    return extracted
+        raise tarfile.TarError("cargo-binstall executable not found in archive")
 
 
 class MiseManager(CommandManager):

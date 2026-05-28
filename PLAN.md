@@ -18,6 +18,7 @@ Implement tool-installer as specified in `SPEC.md`: a Python 3.8+ declarative de
 - [x] Phase 8: Single-file executable distribution
 - [x] Phase 9: Network configuration and GitHub mirror fallback
 - [x] Phase 10: Manager configuration layer and GitHub token auto-detection
+- [ ] Phase 11: cargo-install binstall_first optimization
 
 Current test status:
 
@@ -853,5 +854,46 @@ When completing a task:
 - `PLAN.md`
 - `tests/test_network_config.py`
 - `examples/dotfiles/manifest.toml`
+
+**Scope:** Medium
+
+---
+
+## Phase 11: cargo-install binstall_first Optimization
+
+### Task 23: cargo-install binstall_first field and self-bootstrapping
+
+**Status:** Pending
+
+**Description:** Add `binstall_first` optional field to `cargo-install` manager. When enabled, the manager self-bootstraps cargo-binstall from GitHub Releases, attempts precompiled binary installation, and falls back to `cargo install` on failure.
+
+**Acceptance criteria:**
+
+- [x] `binstall_first` is an optional bool field on `cargo-install` strategies (default `false`)
+- [x] When `true`, install flow is: check PATH → auto-download binstall if missing → `cargo binstall --disable-strategies compile` → fallback `cargo install`
+- [x] Auto-download binstall to `~/.cargo/bin/`, skip if already present and executable
+- [x] binstall download failure silently falls back to `cargo install`
+- [x] binstall install failure falls back to `cargo install`
+- [x] `--disable-strategies compile` always used in binstall phase
+- [x] `--locked` flag respected in fallback phase when `locked = true`
+- [x] check semantics unchanged (cargo metadata-based)
+- [x] Unit tests for binstall_first flow (mocked subprocesses)
+- [x] SPEC.md updated with binstall_first documentation
+- [x] docs/draft-cargo-binstall-first.md merged into SPEC.md
+
+**Verification:**
+
+- [ ] `python3 -m pytest tests/test_binstall_first.py`
+- [ ] `python3 -m pytest -q` => 171+ passed
+- [ ] dotfiles cargo-tools module uses `binstall_first = true`
+
+**Files touched:**
+
+- `src/tool_installer/strategy.py` (binstall_first field)
+- `src/tool_installer/managers/commands.py` (CargoInstallManager install method)
+- `src/tool_installer/managers/binstall_bootstrap.py` (new — binstall auto-download)
+- `tests/test_binstall_first.py` (new)
+- `SPEC.md`
+- `docs/draft-cargo-binstall-first.md`
 
 **Scope:** Medium

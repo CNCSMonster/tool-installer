@@ -216,6 +216,58 @@ pkg = "fd-find"
     assert plan.items[0].strategy.fields["bin"] == "fd"
 
 
+
+
+def test_cargo_install_accepts_binstall_first_bool(tmp_path: Path) -> None:
+    """cargo-install supports opt-in binstall_first as a boolean field."""
+    tools = tmp_path / "tools.toml"
+    manifest = tmp_path / "manifest.toml"
+    write(tools, "[tool-installer]\nmanifest = 'manifest.toml'\n[dev]\nripgrep = ''\n")
+    write(
+        manifest,
+        """
+[ripgrep]
+[ripgrep.linux]
+manager = "cargo-install"
+pkg = "ripgrep"
+binstall_first = true
+""",
+    )
+    config = parse_tools_file(tools, "dev")
+    manifest_data, _ = parse_manifest_file(manifest)
+    plan = build_install_plan(
+        collect_ordered_tools(resolve_modules(config, "dev")),
+        manifest_data,
+        normalize_environment("Linux", "x86_64"),
+        tmp_path,
+    )
+    assert plan.items[0].strategy.fields["binstall_first"] is True
+
+
+def test_cargo_install_rejects_non_bool_binstall_first(tmp_path: Path) -> None:
+    tools = tmp_path / "tools.toml"
+    manifest = tmp_path / "manifest.toml"
+    write(tools, "[tool-installer]\nmanifest = 'manifest.toml'\n[dev]\nripgrep = ''\n")
+    write(
+        manifest,
+        """
+[ripgrep]
+[ripgrep.linux]
+manager = "cargo-install"
+pkg = "ripgrep"
+binstall_first = "yes"
+""",
+    )
+    config = parse_tools_file(tools, "dev")
+    manifest_data, _ = parse_manifest_file(manifest)
+    with pytest.raises(StrategyError, match="binstall_first"):
+        build_install_plan(
+            collect_ordered_tools(resolve_modules(config, "dev")),
+            manifest_data,
+            normalize_environment("Linux", "x86_64"),
+            tmp_path,
+        )
+
 # --- cargo-binstall non-check-capable ---
 
 def test_cargo_binstall_non_check_capable() -> None:

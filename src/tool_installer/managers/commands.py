@@ -362,7 +362,7 @@ class CargoInstallManager(CommandManager):
                     result = self.runner.run(
                         self._binstall_command(item, binstall),
                         check=False,
-                        timeout=120,
+                        timeout=30,
                     )
                     if result.returncode == 0:
                         return

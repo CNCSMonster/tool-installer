@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import stat
+import subprocess
 import tarfile
 import tempfile
 import urllib.error
@@ -357,9 +358,16 @@ class CargoInstallManager(CommandManager):
         if fields.get("binstall_first") is True and "git" not in fields:
             binstall = self._ensure_binstall(item)
             if binstall is not None:
-                result = self.runner.run(self._binstall_command(item, binstall), check=False)
-                if result.returncode == 0:
-                    return
+                try:
+                    result = self.runner.run(
+                        self._binstall_command(item, binstall),
+                        check=False,
+                        timeout=120,
+                    )
+                    if result.returncode == 0:
+                        return
+                except subprocess.TimeoutExpired:
+                    pass
 
         result = self.runner.run(self._cargo_install_command(item), check=False)
         if result.returncode != 0:

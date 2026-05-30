@@ -437,14 +437,40 @@ class CargoInstallManager(CommandManager):
         if target is None:
             return False
         asset = f"cargo-binstall-{target}.tgz"
-        url = f"{self._BINSTALL_RELEASE_BASE}/{asset}"
 
         try:
             destination.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.TemporaryDirectory() as temp:
                 archive = Path(temp) / asset
-                with urllib.request.urlopen(url, timeout=30) as response:
-                    archive.write_bytes(response.read())
+
+                # Try gh CLI first (has GITHUB_TOKEN auth, avoids rate limits in CI)
+                if shutil.which("gh"):
+                    try:
+                        self.runner.run(
+                            [
+                                "gh", "release", "download",
+                                "latest",
+                                "--repo", "cargo-bins/cargo-binstall",
+                                "--pattern", asset,
+                                "--dir", str(temp),
+                            ],
+                            check=True,
+                            capture_output=True,
+                            timeout=60,
+                        )
+                    except (subprocess.TimeoutExpired, OSError):
+                        # gh failed, fall through to urllib
+                        pass
+
+                # If gh didn't produce the file, try urllib
+                if not archive.is_file():
+                    url = f"{self._BINSTALL_RELEASE_BASE}/{asset}"
+                    with urllib.request.urlopen(url, timeout=30) as response:
+                        archive.write_bytes(response.read())
+
+                if not archive.is_file():
+                    return False
+
                 executable = self._extract_binstall(archive, Path(temp))
                 temp_dest = destination.parent / f".{destination.name}.installing"
                 shutil.copy2(executable, temp_dest)

@@ -259,7 +259,8 @@ Other managers (`apt`, `cargo`, `npm`, etc.) manage their own network configurat
 
 ### GitHub Token
 
-Tool-installer automatically detects a GitHub token for `github-release` downloads. The detection order is:
+Tool-installer automatically detects a GitHub token for `github-release` downloads
+and `cargo-binstall` subprocess execution. The detection order is:
 
 1. `GITHUB_TOKEN` environment variable (if set and non-empty)
 2. `gh auth token` (if GitHub CLI is installed and authenticated)
@@ -277,6 +278,18 @@ The detected token source is reported to stdout during apply mode:
 ```
 
 Dry-run mode does not detect or report the token.
+
+#### binstall_first Token Inheritance
+
+When `binstall_first = true` on a `cargo-install` strategy, the detected token
+is injected as `GITHUB_TOKEN` environment variable into the `cargo binstall`
+subprocess. This allows `cargo binstall` to use authenticated GitHub API requests
+even when the user has not explicitly set `GITHUB_TOKEN`.
+
+The user's own `GITHUB_TOKEN` environment variable takes priority — if already set,
+it is passed through unchanged and `gh auth token` is not used as a fallback.
+This respects user intent when they explicitly configure a specific token (e.g.,
+a personal access token or an organization-scoped token).
 
 ## Environment Names
 

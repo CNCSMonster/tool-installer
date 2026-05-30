@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from ..errors import InstallationError
+from ..github_token import detect_github_token
 from ..models import PlanItem
 from .base import CheckResult, CommandManager, CommandRunner
 
@@ -359,10 +360,17 @@ class CargoInstallManager(CommandManager):
             binstall = self._ensure_binstall(item)
             if binstall is not None:
                 try:
+                    # Inject GITHUB_TOKEN from gh auth if not already set,
+                    # so cargo-binstall can use authenticated API requests
+                    token, _source = detect_github_token()
+                    env = None
+                    if token is not None and not os.environ.get("GITHUB_TOKEN"):
+                        env = {**os.environ, "GITHUB_TOKEN": token}
                     result = self.runner.run(
                         self._binstall_command(item, binstall),
                         check=False,
                         timeout=30,
+                        env=env,
                     )
                     if result.returncode == 0:
                         return

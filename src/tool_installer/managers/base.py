@@ -28,6 +28,12 @@ class CommandRunner(Protocol):
 class SubprocessRunner:
     def run(self, args: Sequence[str], check: bool = False, **kwargs: object) -> subprocess.CompletedProcess[str]:
         kwargs.setdefault("text", True)
+        # Ensure ~/.cargo/bin is in PATH for cargo/rustup tools
+        env = kwargs.get("env") or dict(os.environ)
+        cargo_bin = os.path.expanduser("~/.cargo/bin")
+        if cargo_bin not in env.get("PATH", ""):
+            env["PATH"] = cargo_bin + os.pathsep + env.get("PATH", "")
+            kwargs["env"] = env
         return subprocess.run(list(args), check=check, **kwargs)
 
 

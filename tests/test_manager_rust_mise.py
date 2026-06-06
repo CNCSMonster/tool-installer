@@ -80,9 +80,46 @@ def test_cargo_install_latest_outdated_from_registry_metadata() -> None:
     assert mgr.check(item("cargo-install", "ripgrep", "latest", {"pkg": "ripgrep"})) == CheckResult.NOT_SATISFIED
 
 
-def test_cargo_install_git_check_error() -> None:
-    mgr = CargoInstallManager(runner(""))
-    assert mgr.check(item("cargo-install", "tool", "latest", {"pkg": "tool", "git": "https://example/repo.git"})) == CheckResult.CHECK_ERROR
+def test_cargo_install_git_with_tag_satisfied() -> None:
+    """Git source with tag: version extracted from cargo install --list matches tag."""
+    out = "zola v0.22.1 (https://github.com/getzola/zola?tag=v0.22.1#abc123def):\n    zola\n"
+    mgr = CargoInstallManager(runner(out))
+    assert mgr.check(item("cargo-install", "zola", "latest", {"pkg": "zola", "git": "https://github.com/getzola/zola", "tag": "v0.22.1"})) == CheckResult.SATISFIED
+
+
+def test_cargo_install_git_with_tag_mismatch() -> None:
+    """Git source with tag: installed version differs from manifest tag."""
+    out = "zola v0.21.0 (https://github.com/getzola/zola?tag=v0.21.0#def456):\n    zola\n"
+    mgr = CargoInstallManager(runner(out))
+    assert mgr.check(item("cargo-install", "zola", "latest", {"pkg": "zola", "git": "https://github.com/getzola/zola", "tag": "v0.22.1"})) == CheckResult.NOT_SATISFIED
+
+
+def test_cargo_install_git_without_tag_latest() -> None:
+    """Git source without tag: 'latest' returns SATISFIED if installed."""
+    out = "tool v1.0.0 (https://example/repo.git?rev=abc#hash):\n    tool\n"
+    mgr = CargoInstallManager(runner(out))
+    assert mgr.check(item("cargo-install", "tool", "latest", {"pkg": "tool", "git": "https://example/repo.git", "rev": "abc"})) == CheckResult.SATISFIED
+
+
+def test_cargo_install_git_without_tag_exact_satisfied() -> None:
+    """Git source without tag: exact version matches."""
+    out = "tool v1.0.0 (https://example/repo.git?rev=abc#hash):\n    tool\n"
+    mgr = CargoInstallManager(runner(out))
+    assert mgr.check(item("cargo-install", "tool", "1.0.0", {"pkg": "tool", "git": "https://example/repo.git", "rev": "abc"})) == CheckResult.SATISFIED
+
+
+def test_cargo_install_git_without_tag_exact_mismatch() -> None:
+    """Git source without tag: exact version mismatch."""
+    out = "tool v1.0.0 (https://example/repo.git?rev=abc#hash):\n    tool\n"
+    mgr = CargoInstallManager(runner(out))
+    assert mgr.check(item("cargo-install", "tool", "2.0.0", {"pkg": "tool", "git": "https://example/repo.git", "rev": "abc"})) == CheckResult.NOT_SATISFIED
+
+
+def test_cargo_install_git_not_installed() -> None:
+    """Git source: package not in cargo install --list."""
+    out = "other v2.0.0:\n    other\n"
+    mgr = CargoInstallManager(runner(out))
+    assert mgr.check(item("cargo-install", "tool", "latest", {"pkg": "tool", "git": "https://example/repo.git"})) == CheckResult.NOT_SATISFIED
 
 
 def test_cargo_install_command_exact_locked() -> None:

@@ -274,11 +274,6 @@ class CargoInstallManager(CommandManager):
         pkg = item.strategy.fields["pkg"]
         fields = item.strategy.fields
 
-        # Check if tracking is available
-        if fields.get("git"):
-            # git-based install: hard to check installed state
-            return CheckResult.CHECK_ERROR
-
         try:
             result = self.runner.run(
                 ["cargo", "install", "--list"],
@@ -292,27 +287,42 @@ class CargoInstallManager(CommandManager):
         if result.returncode != 0:
             return CheckResult.CHECK_ERROR
 
-        # Parse cargo install --list output
-        # Format: "<pkg> v<version>:" followed by binary paths
+        # Parse cargo install --list output for both formats:
+        #   crates.io:  "<pkg> v<version>:"
+        #   git source: "<pkg> v<version> (<url>):"
         found_version = None
-        lines = result.stdout.splitlines()
-        i = 0
-        while i < len(lines):
-            line = lines[i].strip()
-            # Match "pkg vX.Y.Z:"
-            if line.startswith(f"{pkg} v") and line.endswith(":"):
-                version_part = line[len(pkg):-1].strip()
-                # Remove leading 'v' or 'V'
-                if version_part[0] in ("v", "V"):
-                    version_part = version_part[1:]
-                found_version = version_part
-                break
-            i += 1
+        for line in result.stdout.splitlines():
+            stripped = line.strip()
+            if not stripped.startswith(f"{pkg} v"):
+                continue
+            # Extract version between "v" and ":" or " ("
+            rest = stripped[len(pkg):].strip()  # "v1.2.3:" or "v1.2.3 (url):"
+            if rest and rest[0] in ("v", "V"):
+                rest = rest[1:]  # "1.2.3:" or "1.2.3 (url):"
+            # Find the end of the version string
+            end = len(rest)
+            for delim in (":", " "):
+                pos = rest.find(delim)
+                if pos != -1:
+                    end = min(end, pos)
+            found_version = rest[:end]
+            break
 
         if found_version is None:
             return CheckResult.NOT_SATISFIED
 
         requested = _selector(item)
+        if fields.get("git"):
+            # Git sources: use tag field for precise comparison when available
+            tag = fields.get("tag")
+            if tag is not None:
+                return CheckResult.SATISFIED if _v1_eq(found_version, tag) else CheckResult.NOT_SATISFIED
+            # Without a tag, we cannot resolve "latest" for git sources,
+            # but can verify an exact requested version
+            if requested == "latest":
+                return CheckResult.SATISFIED  # installed; currency unknown
+            return CheckResult.SATISFIED if _v1_eq(found_version, requested) else CheckResult.NOT_SATISFIED
+
         if requested == "latest":
             latest_version = self._latest_registry_version(pkg)
             if latest_version is None:

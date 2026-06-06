@@ -367,7 +367,8 @@ class CargoInstallManager(CommandManager):
     def install(self, item: PlanItem) -> None:
         fields = item.strategy.fields
         if fields.get("binstall_first") is True and "git" not in fields:
-            binstall = self._ensure_binstall(item)
+            binstall_retry = int(fields.get("binstall_retry", 0) or 0)
+            binstall = self._ensure_binstall(item, retry=binstall_retry)
             if binstall is not None:
                 try:
                     # Inject GITHUB_TOKEN from gh auth if not already set,
@@ -376,8 +377,9 @@ class CargoInstallManager(CommandManager):
                     env = None
                     if token is not None and not os.environ.get("GITHUB_TOKEN"):
                         env = {**os.environ, "GITHUB_TOKEN": token}
+                    command = self._binstall_command(item, binstall, fields)
                     result = self.runner.run(
-                        self._binstall_command(item, binstall),
+                        command,
                         check=False,
                         timeout=30,
                         env=env,
@@ -405,14 +407,18 @@ class CargoInstallManager(CommandManager):
             command.extend(["--version", _selector(item)])
         return command
 
-    def _binstall_command(self, item: PlanItem, invocation: List[str]) -> List[str]:
-        command = list(invocation) + ["-y", "--disable-strategies", "compile"]
+    def _binstall_command(self, item: PlanItem, invocation: List[str], fields: Optional[Dict[str, Any]] = None) -> List[str]:
+        fields = fields or item.strategy.fields
+        if fields.get("binstall_fallback_compile", False):
+            command = list(invocation) + ["-y"]
+        else:
+            command = list(invocation) + ["-y", "--disable-strategies", "compile"]
         if _selector(item) != "latest":
             command.extend(["--version", _selector(item)])
         command.append(item.strategy.fields["pkg"])
         return command
 
-    def _ensure_binstall(self, item: PlanItem) -> Optional[List[str]]:
+    def _ensure_binstall(self, item: PlanItem, retry: int = 0) -> Optional[List[str]]:
         """Return a cargo-binstall invocation, or None when unavailable.
 
         All bootstrap failures are intentionally non-fatal so
@@ -428,10 +434,10 @@ class CargoInstallManager(CommandManager):
                 return [str(home_binary)]
             return None
 
-        if not self._download_binstall(item, home_binary):
-            return None
-        if self._verified_binstall(str(home_binary)):
-            return [str(home_binary)]
+        for attempt in range(1 + retry):
+            if self._download_binstall(item, home_binary):
+                if self._verified_binstall(str(home_binary)):
+                    return [str(home_binary)]
         return None
 
     def _verified_binstall(self, binary: str) -> bool:

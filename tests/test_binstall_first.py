@@ -181,7 +181,7 @@ class TestBinstallBootstrap:
             manager.install(item)
 
         assert len(runner.calls) == 2
-        assert runner.calls[0] == ["cargo-binstall", "--version"]
+        assert runner.calls[0] == ["cargo-binstall", "-V"]
         assert _is_binstall_call(runner.calls[1])
 
     def test_download_failure_silently_falls_back(self):

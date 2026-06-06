@@ -9,6 +9,7 @@ import stat
 import subprocess
 import tarfile
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -389,9 +390,19 @@ class CargoInstallManager(CommandManager):
                 except subprocess.TimeoutExpired:
                     pass
 
-        result = self.runner.run(self._cargo_install_command(item), check=False)
-        if result.returncode != 0:
-            raise InstallationError(f"Install failed for {item.tool.reference.name} with manager {item.strategy.manager}")
+        # Retry cargo install on transient failures (network, registry, etc.)
+        max_retries = 2
+        for attempt in range(1 + max_retries):
+            result = self.runner.run(self._cargo_install_command(item), check=False)
+            if result.returncode == 0:
+                return
+            if attempt < max_retries:
+                delay = 2 ** attempt  # exponential backoff: 1s, 2s
+                time.sleep(delay)
+        raise InstallationError(
+            f"Install failed for {item.tool.reference.name} with manager {item.strategy.manager} "
+            f"after {1 + max_retries} attempts"
+        )
 
     def _cargo_install_command(self, item: PlanItem) -> List[str]:
         fields = item.strategy.fields

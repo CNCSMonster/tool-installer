@@ -287,27 +287,7 @@ class CargoInstallManager(CommandManager):
         if result.returncode != 0:
             return CheckResult.CHECK_ERROR
 
-        # Parse cargo install --list output for both formats:
-        #   crates.io:  "<pkg> v<version>:"
-        #   git source: "<pkg> v<version> (<url>):"
-        found_version = None
-        for line in result.stdout.splitlines():
-            stripped = line.strip()
-            if not stripped.startswith(f"{pkg} v"):
-                continue
-            # Extract version between "v" and ":" or " ("
-            rest = stripped[len(pkg):].strip()  # "v1.2.3:" or "v1.2.3 (url):"
-            if rest and rest[0] in ("v", "V"):
-                rest = rest[1:]  # "1.2.3:" or "1.2.3 (url):"
-            # Find the end of the version string
-            end = len(rest)
-            for delim in (":", " "):
-                pos = rest.find(delim)
-                if pos != -1:
-                    end = min(end, pos)
-            found_version = rest[:end]
-            break
-
+        found_version = self._parse_cargo_list_version(pkg, result.stdout)
         if found_version is None:
             return CheckResult.NOT_SATISFIED
 
@@ -330,6 +310,26 @@ class CargoInstallManager(CommandManager):
             return CheckResult.SATISFIED if _v1_eq(found_version, latest_version) else CheckResult.NOT_SATISFIED
 
         return CheckResult.SATISFIED if _v1_eq(found_version, requested) else CheckResult.NOT_SATISFIED
+
+    def _parse_cargo_list_version(self, pkg: str, stdout: str) -> Optional[str]:
+        # Parse cargo install --list output for both formats:
+        #   crates.io:  "<pkg> v<version>:"
+        #   git source: "<pkg> v<version> (<url>):"
+        for line in stdout.splitlines():
+            stripped = line.strip()
+            if not stripped.startswith(f"{pkg} v"):
+                continue
+            rest = stripped[len(pkg):].strip()  # "v1.2.3:" or "v1.2.3 (url):"
+            if rest and rest[0] in ("v", "V"):
+                rest = rest[1:]  # "1.2.3:" or "1.2.3 (url):"
+            end = len(rest)
+            for delim in (":", " "):
+                pos = rest.find(delim)
+                if pos != -1:
+                    end = min(end, pos)
+            version = rest[:end]
+            return version if version else None
+        return None
 
     def _latest_registry_version(self, pkg: str) -> Optional[str]:
         try:
@@ -436,7 +436,7 @@ class CargoInstallManager(CommandManager):
 
     def _verified_binstall(self, binary: str) -> bool:
         try:
-            result = self.runner.run([binary, "--version"], check=False, capture_output=True, text=True)
+            result = self.runner.run([binary, "-V"], check=False, capture_output=True, text=True)
         except OSError:
             return False
         return result.returncode == 0

@@ -554,9 +554,12 @@ class MiseManager(CommandManager):
             return CheckResult.CHECK_ERROR
 
         # Check if requested version is installed
+        # mise ls --json returns entries with `installed` field; filter to only installed
         installed_versions = []
         if isinstance(data, list):
             for entry in data:
+                if not entry.get("installed", True):
+                    continue
                 version = entry.get("version", "")
                 if version:
                     installed_versions.append(version)
@@ -566,6 +569,8 @@ class MiseManager(CommandManager):
                 if isinstance(v, str):
                     installed_versions.append(v)
                 elif isinstance(v, dict):
+                    if not v.get("installed", True):
+                        continue
                     ver = v.get("version", "")
                     if ver:
                         installed_versions.append(ver)

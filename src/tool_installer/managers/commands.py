@@ -174,7 +174,7 @@ class BrewManager(CommandManager):
         raise NotImplementedError("Use check() instead")
 
     def install_command(self, item: PlanItem) -> List[str]:
-        return ["brew", "install", item.strategy.fields["pkg"]]
+        return ["brew", "install", "--yes", item.strategy.fields["pkg"]]
 
 
 class BrewCaskManager(CommandManager):
@@ -228,7 +228,7 @@ class BrewCaskManager(CommandManager):
         raise NotImplementedError("Use check() instead")
 
     def install_command(self, item: PlanItem) -> List[str]:
-        return ["brew", "install", "--cask", item.strategy.fields["pkg"]]
+        return ["brew", "install", "--cask", "--yes", item.strategy.fields["pkg"]]
 
 
 class CargoBinstallManager(CommandManager):
